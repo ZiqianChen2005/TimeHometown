@@ -257,11 +257,6 @@ public class UIManager : MonoBehaviour
     /// </summary>
     public void Logout()
     {
-        // 淡出主界面
-        if (mainCanvasGroup != null)
-        {
-            StartCoroutine(FadeOutMainUI());
-        }
 
         // 移动相机回登录界面
         CameraController.Instance.MoveToLoginView();

@@ -5,6 +5,12 @@ using UnityEngine.UI;
 
 public class ProfilePanelController : MonoBehaviour
 {
+    [Header("用户信息显示")]
+    [SerializeField] private Text userNameText;
+    [SerializeField] private Button editUserNameButton;
+    [SerializeField] private Text signatureText;
+    [SerializeField] private Button editSignatureButton;
+
     [Header("音量控制")]
     [SerializeField] private Slider bgmSlider;
     [SerializeField] private Slider sfxSlider;
@@ -14,17 +20,216 @@ public class ProfilePanelController : MonoBehaviour
     [Header("退出登录")]
     [SerializeField] private Button logoutButton;
 
+    // 默认用户数据
+    private string currentUserName = "时光旅人";
+    private string currentSignature = "自律让我更自由！";
+
     private bool isInitialized = false;
 
     void Start()
     {
+        InitializeProfileInfo();
         InitializeVolumeControls();
-        InitializeLogoutButton();
+        LoadUserData();
     }
 
     void Update()
     {
 
+    }
+
+    /// <summary>
+    /// 初始化用户信息显示
+    /// </summary>
+    private void InitializeProfileInfo()
+    {
+        // 用户名编辑按钮
+        if (editUserNameButton != null)
+        {
+            editUserNameButton.onClick.RemoveAllListeners();
+            editUserNameButton.onClick.AddListener(OnEditUserNameClicked);
+        }
+
+        // 个性签名编辑按钮
+        if (editSignatureButton != null)
+        {
+            editSignatureButton.onClick.RemoveAllListeners();
+            editSignatureButton.onClick.AddListener(OnEditSignatureClicked);
+
+        }
+
+        Debug.Log("用户信息显示初始化完成");
+    }
+
+    /// <summary>
+    /// 加载用户数据
+    /// </summary>
+    private void LoadUserData()
+    {
+        // 从PlayerPrefs加载保存的用户数据
+        currentUserName = PlayerPrefs.GetString("User_Name", "时光旅人");
+        currentSignature = PlayerPrefs.GetString("User_Signature", "自律让我更自由！");
+
+        // 更新UI显示
+        UpdateProfileDisplay();
+
+        Debug.Log($"加载用户数据: 用户名={currentUserName}, 签名={currentSignature}");
+    }
+
+    /// <summary>
+    /// 保存用户数据
+    /// </summary>
+    private void SaveUserData()
+    {
+        PlayerPrefs.SetString("User_Name", currentUserName);
+        PlayerPrefs.SetString("User_Signature", currentSignature);
+        PlayerPrefs.Save();
+
+        Debug.Log($"保存用户数据: 用户名={currentUserName}, 签名={currentSignature}");
+    }
+
+    /// <summary>
+    /// 更新用户信息显示
+    /// </summary>
+    private void UpdateProfileDisplay()
+    {
+        // 更新用户名显示
+        if (userNameText != null)
+        {
+            userNameText.text = currentUserName;
+        }
+
+        // 更新个性签名显示
+        if (signatureText != null)
+        {
+            // 如果签名为空，显示默认提示
+            if (string.IsNullOrWhiteSpace(currentSignature))
+            {
+                signatureText.text = "点击编辑个性签名";
+                signatureText.color = new Color(0.6f, 0.6f, 0.6f, 1f); // 灰色
+            }
+            else
+            {
+                signatureText.text = currentSignature;
+                signatureText.color = Color.black; // 黑色
+            }
+        }
+    }
+
+    /// <summary>
+    /// 编辑用户名按钮点击事件
+    /// </summary>
+    private void OnEditUserNameClicked()
+    {
+        Debug.Log("点击编辑用户名按钮");
+
+        // 播放音效
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayButtonClick();
+        }
+
+        // 显示修改用户名对话框
+        if (EditProfileDialog.Instance != null)
+        {
+            EditProfileDialog.Instance.ShowUserNameDialog(
+                currentUserName,
+                OnUserNameConfirmed,
+                OnEditCancelled
+            );
+        }
+        else
+        {
+            Debug.LogError("EditProfileDialog实例未找到！");
+        }
+    }
+
+    /// <summary>
+    /// 编辑个性签名按钮点击事件
+    /// </summary>
+    private void OnEditSignatureClicked()
+    {
+        Debug.Log("点击编辑个性签名按钮");
+
+        // 播放音效
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayButtonClick();
+        }
+
+        // 显示修改个性签名对话框
+        if (EditProfileDialog.Instance != null)
+        {
+            EditProfileDialog.Instance.ShowSignatureDialog(
+                currentSignature,
+                OnSignatureConfirmed,
+                OnEditCancelled
+            );
+        }
+        else
+        {
+            Debug.LogError("EditProfileDialog实例未找到！");
+        }
+    }
+
+    /// <summary>
+    /// 用户名修改确认回调
+    /// </summary>
+    private void OnUserNameConfirmed(string newUserName)
+    {
+        Debug.Log($"用户名修改确认: {newUserName}");
+
+        // 更新用户名
+        currentUserName = newUserName.Trim();
+
+        // 保存到PlayerPrefs
+        SaveUserData();
+
+        // 更新UI显示
+        UpdateProfileDisplay();
+
+        // 播放成功音效
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlaySuccessSound();
+        }
+    }
+
+    /// <summary>
+    /// 个性签名修改确认回调
+    /// </summary>
+    private void OnSignatureConfirmed(string newSignature)
+    {
+        Debug.Log($"个性签名修改确认: {newSignature}");
+
+        // 更新个性签名
+        currentSignature = newSignature.Trim();
+
+        // 保存到PlayerPrefs
+        SaveUserData();
+
+        // 更新UI显示
+        UpdateProfileDisplay();
+
+        // 播放成功音效
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlaySuccessSound();
+        }
+    }
+
+    /// <summary>
+    /// 编辑取消回调
+    /// </summary>
+    private void OnEditCancelled()
+    {
+        Debug.Log("编辑已取消");
+
+        // 播放音效
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayButtonClick();
+        }
     }
 
     /// <summary>
@@ -65,28 +270,9 @@ public class ProfilePanelController : MonoBehaviour
     }
 
     /// <summary>
-    /// 初始化退出登录按钮
-    /// </summary>
-    private void InitializeLogoutButton()
-    {
-        if (logoutButton != null)
-        {
-            // 添加事件监听
-            logoutButton.onClick.RemoveAllListeners();
-            logoutButton.onClick.AddListener(OnLogoutButtonClicked);
-
-            Debug.Log("退出登录按钮初始化完成");
-        }
-        else
-        {
-            Debug.LogWarning("未找到退出登录按钮，请检查UI配置");
-        }
-    }
-
-    /// <summary>
     /// 退出登录按钮点击事件
     /// </summary>
-    public void OnLogoutButtonClicked()
+    private void OnLogoutButtonClicked()
     {
         Debug.Log("退出登录按钮被点击");
 
@@ -107,18 +293,15 @@ public class ProfilePanelController : MonoBehaviour
     {
         Debug.Log("正在退出登录...");
 
-        // 重置音量滑块（可选）
-        //ResetVolumeSlidersToDefault();
-
         // 调用UIManager的登出功能
         if (UIManager.Instance != null)
         {
+            // 调用快速版本
             UIManager.Instance.Logout();
         }
         else
         {
             Debug.LogError("UIManager.Instance为null，无法执行登出");
-            // 备用方案：直接重新加载场景或返回到登录界面
             FallbackLogout();
         }
     }
@@ -135,18 +318,6 @@ public class ProfilePanelController : MonoBehaviour
         {
             CameraController.Instance.MoveToLoginView();
         }
-
-        // 这里可以添加更多清理逻辑
-        // 例如：重置游戏状态、清理数据等
-    }
-
-    /// <summary>
-    /// 重置音量滑块为默认值
-    /// </summary>
-    private void ResetVolumeSlidersToDefault()
-    {
-        // 这里可以根据需要重置滑块
-        // 默认不重置，保持用户设置
     }
 
     /// <summary>
@@ -210,6 +381,7 @@ public class ProfilePanelController : MonoBehaviour
     public void OnPanelOpened()
     {
         RefreshVolumeSettings();
+        RefreshProfileInfo();
     }
 
     /// <summary>
@@ -217,11 +389,24 @@ public class ProfilePanelController : MonoBehaviour
     /// </summary>
     public void OnPanelClosed()
     {
-        // 可以在这里保存设置或进行清理
+        // 如果编辑对话框还在显示，强制关闭
+        if (EditProfileDialog.Instance != null && EditProfileDialog.Instance.IsShowing())
+        {
+            EditProfileDialog.Instance.ForceClose();
+        }
     }
 
     /// <summary>
-    /// 刷新音量设置（当从其他界面返回时使用）
+    /// 刷新用户信息
+    /// </summary>
+    private void RefreshProfileInfo()
+    {
+        // 重新加载数据并更新显示
+        LoadUserData();
+    }
+
+    /// <summary>
+    /// 刷新音量设置
     /// </summary>
     public void RefreshVolumeSettings()
     {
@@ -254,6 +439,45 @@ public class ProfilePanelController : MonoBehaviour
             AudioManager.Instance.ResetToDefaultVolume();
             RefreshVolumeSettings();
         }
+    }
+
+    /// <summary>
+    /// 获取当前用户名
+    /// </summary>
+    public string GetUserName()
+    {
+        return currentUserName;
+    }
+
+    /// <summary>
+    /// 获取当前个性签名
+    /// </summary>
+    public string GetSignature()
+    {
+        return currentSignature;
+    }
+
+    /// <summary>
+    /// 设置用户名（外部调用）
+    /// </summary>
+    public void SetUserName(string userName)
+    {
+        if (!string.IsNullOrWhiteSpace(userName))
+        {
+            currentUserName = userName.Trim();
+            SaveUserData();
+            UpdateProfileDisplay();
+        }
+    }
+
+    /// <summary>
+    /// 设置个性签名（外部调用）
+    /// </summary>
+    public void SetSignature(string signature)
+    {
+        currentSignature = signature?.Trim() ?? "";
+        SaveUserData();
+        UpdateProfileDisplay();
     }
 }
 
