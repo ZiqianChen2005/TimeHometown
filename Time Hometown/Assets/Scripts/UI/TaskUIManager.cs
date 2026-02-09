@@ -1,16 +1,20 @@
 using UnityEngine;
+using UnityEngine.UI; // 必须引用UI命名空间
 
 public class TaskUIManager : MonoBehaviour
 {
-    // 单例，方便任务模块内部其他脚本（如列表项、按钮）调用
+    // 单例
     public static TaskUIManager Instance;
 
-    // 引用各个子面板
+    // 面板引用
     public GameObject TaskListPanel;
     public GameObject AddTagPanel;
     public GameObject AddTaskPanel;
     public GameObject MatrixModePanel;
     public GameObject TaskDetailPanel;
+
+    // 新增：引用Dropdown组件（必须在Inspector中拖入）
+    public Dropdown mainDropdown;
 
     void Awake()
     {
@@ -26,58 +30,73 @@ public class TaskUIManager : MonoBehaviour
 
     void Start()
     {
-        // 初始化：显示清单，隐藏其他
+        // 初始化面板
         OpenPanel(TaskListPanel);
         ClosePanel(AddTagPanel);
         ClosePanel(AddTaskPanel);
         ClosePanel(MatrixModePanel);
         ClosePanel(TaskDetailPanel);
+
+        // ========== 关键：代码绑定事件 ==========
+        // 确保 mainDropdown 已在Inspector中拖入
+        if (mainDropdown != null)
+        {
+            // 移除旧监听（防止重复绑定）
+            mainDropdown.onValueChanged.RemoveAllListeners();
+            // 添加新监听：绑定到 OnDropdownValueChanged 方法
+            mainDropdown.onValueChanged.AddListener(OnDropdownValueChanged);
+        }
     }
 
-    // 通用的打开方法
-    void OpenPanel(GameObject panel)
-    {
-        if (panel != null) panel.SetActive(true);
-    }
+    // 通用打开/关闭方法
+    void OpenPanel(GameObject panel) { if (panel != null) panel.SetActive(true); }
+    void ClosePanel(GameObject panel) { if (panel != null) panel.SetActive(false); }
 
-    // 通用的关闭方法
-    void ClosePanel(GameObject panel)
-    {
-        if (panel != null) panel.SetActive(false);
-    }
+    // 公共跳转方法
+    public void GoToAddTask() { ClosePanel(TaskListPanel); OpenPanel(AddTaskPanel); }
+    public void GoToAddTag() { ClosePanel(TaskListPanel); OpenPanel(AddTagPanel); }
+    public void GoToMatrixMode() { ClosePanel(TaskListPanel); OpenPanel(MatrixModePanel); }
+    public void GoToTaskDetail() { ClosePanel(TaskListPanel); OpenPanel(TaskDetailPanel); }
 
-    // ============ 供按钮点击调用的公共方法 ============
-
-    // 从清单跳转到其他界面
-    public void GoToAddTask()
-    {
-        ClosePanel(TaskListPanel);
-        OpenPanel(AddTaskPanel);
-    }
-
-    public void GoToAddTag()
-    {
-        ClosePanel(TaskListPanel);
-        OpenPanel(AddTagPanel);
-    }
-
-    public void GoToMatrixMode()
-    {
-        ClosePanel(TaskListPanel);
-        OpenPanel(MatrixModePanel);
-    }
-
-    public void GoToTaskDetail()
-    {
-        ClosePanel(TaskListPanel);
-        OpenPanel(TaskDetailPanel);
-    }
-
-    // ============ 返回按钮逻辑 ============
-    // 通常每个子界面都有一个“返回”按钮，都调用这个方法回到清单
+    // 返回清单
     public void BackToTaskList(GameObject currentPanel)
     {
         ClosePanel(currentPanel);
         OpenPanel(TaskListPanel);
+    }
+
+    // 下拉菜单回调（接收动态值）
+    public void OnDropdownValueChanged(int value)
+    {
+        switch (value)
+        {
+            case 0: // 四象限
+                if (!MatrixModePanel.activeSelf)
+                {
+                    CloseCurrentPanel();
+                    OpenPanel(MatrixModePanel);
+                }
+                break;
+
+            case 1: // 任务清单
+                if (!TaskListPanel.activeSelf)
+                {
+                    CloseCurrentPanel();
+                    OpenPanel(TaskListPanel);
+                }
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    // 辅助：关闭当前激活的子面板
+    private void CloseCurrentPanel()
+    {
+        if (AddTagPanel.activeSelf) ClosePanel(AddTagPanel);
+        else if (AddTaskPanel.activeSelf) ClosePanel(AddTaskPanel);
+        else if (MatrixModePanel.activeSelf) ClosePanel(MatrixModePanel);
+        else if (TaskDetailPanel.activeSelf) ClosePanel(TaskDetailPanel);
     }
 }
