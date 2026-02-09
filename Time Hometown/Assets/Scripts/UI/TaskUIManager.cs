@@ -70,20 +70,14 @@ public class TaskUIManager : MonoBehaviour
     {
         switch (value)
         {
-            case 0: // 四象限
-                if (!MatrixModePanel.activeSelf)
-                {
-                    CloseCurrentPanel();
-                    OpenPanel(MatrixModePanel);
-                }
+            case 0: // 任务清单
+                CloseCurrentPanel();
+                OpenPanel(TaskListPanel);
                 break;
 
-            case 1: // 任务清单
-                if (!TaskListPanel.activeSelf)
-                {
-                    CloseCurrentPanel();
-                    OpenPanel(TaskListPanel);
-                }
+            case 1: // 四象限
+                CloseCurrentPanel();
+                OpenPanel(MatrixModePanel);
                 break;
 
             default:
@@ -96,6 +90,7 @@ public class TaskUIManager : MonoBehaviour
     {
         if (AddTagPanel.activeSelf) ClosePanel(AddTagPanel);
         else if (AddTaskPanel.activeSelf) ClosePanel(AddTaskPanel);
+        else if (TaskListPanel.activeSelf) ClosePanel(TaskListPanel);
         else if (MatrixModePanel.activeSelf) ClosePanel(MatrixModePanel);
         else if (TaskDetailPanel.activeSelf) ClosePanel(TaskDetailPanel);
     }
