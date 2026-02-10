@@ -80,6 +80,16 @@ public class TaskUIManager : MonoBehaviour
                 OpenPanel(MatrixModePanel);
                 break;
 
+            case 2: //添加任务
+                CloseCurrentPanel();
+                OpenPanel(AddTaskPanel);
+                break;
+
+            case 3: // 添加标签
+                CloseCurrentPanel();
+                OpenPanel(AddTagPanel);
+                break;
+
             default:
                 break;
         }
