@@ -61,7 +61,7 @@ public class FurnitureItemUI : MonoBehaviour
         // 设置价格
         if (priceText != null)
         {
-            priceText.text = $"价格：{furnitureData.price}自律币";
+            priceText.text = $"{furnitureData.price}金币";
         }
 
         // 设置初始颜色
