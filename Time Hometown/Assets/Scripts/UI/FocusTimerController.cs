@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
+using System;
 
 public class FocusTimerController : MonoBehaviour
 {
@@ -29,6 +30,11 @@ public class FocusTimerController : MonoBehaviour
 
     [Header("模式选择")]
     [SerializeField] private Dropdown modeDropdown;
+
+    [Header("历史记录")]
+    [SerializeField] private Button historyButton;           // 专注历史记录按钮
+    [SerializeField] private GameObject historyWindowPrefab; // 历史记录窗口预制体
+    [SerializeField] private Transform canvasTransform;      // Canvas父对象（用于实例化窗口）
 
     [Header("计时器设置")]
     [SerializeField] private int maxHours = 12;      // 最大小时数
@@ -89,9 +95,13 @@ public class FocusTimerController : MonoBehaviour
     private bool shouldBlink = false;
     private bool isWorkStateBlink = true; // true: 工作状态闪烁, false: 完成状态闪烁
 
+    // 历史记录窗口实例
+    private GameObject instantiatedHistoryWindow;
+
     private void Awake()
     {
         InitializeTimer();
+        InitializeHistoryButton();
     }
 
     private void Start()
@@ -100,6 +110,9 @@ public class FocusTimerController : MonoBehaviour
         UpdateButtonStates();
         InitializeModeDropdown();
         ResetFocusStats();
+
+        // 确保历史记录管理器存在
+        EnsureHistoryManagerExists();
     }
 
     private void Update()
@@ -181,6 +194,92 @@ public class FocusTimerController : MonoBehaviour
         currentSeconds = 0f;
 
         Debug.Log("专注计时器初始化完成");
+    }
+
+    /// <summary>
+    /// 初始化历史记录按钮
+    /// </summary>
+    private void InitializeHistoryButton()
+    {
+        if (historyButton != null)
+        {
+            historyButton.onClick.RemoveAllListeners();
+            historyButton.onClick.AddListener(OnHistoryButtonClicked);
+
+            Debug.Log("专注历史记录按钮初始化完成");
+        }
+        else
+        {
+            Debug.LogWarning("专注历史记录按钮未配置，请在Inspector中绑定");
+        }
+    }
+
+    /// <summary>
+    /// 确保历史记录管理器存在
+    /// </summary>
+    private void EnsureHistoryManagerExists()
+    {
+        if (FocusHistoryManager.Instance == null)
+        {
+            GameObject managerObj = new GameObject("FocusHistoryManager");
+            managerObj.AddComponent<FocusHistoryManager>();
+            Debug.Log("自动创建 FocusHistoryManager");
+        }
+    }
+
+    /// <summary>
+    /// 历史记录按钮点击事件
+    /// </summary>
+    private void OnHistoryButtonClicked()
+    {
+        Debug.Log("点击专注历史记录按钮");
+
+        // 播放点击音效
+        PlayButtonClickSound();
+
+        // 打开历史记录窗口
+        OpenHistoryWindow();
+    }
+
+    /// <summary>
+    /// 打开历史记录窗口
+    /// </summary>
+    private void OpenHistoryWindow()
+    {
+        // 优先使用单例
+        if (FocusHistoryWindowController.Instance != null)
+        {
+            FocusHistoryWindowController.Instance.OpenWindow();
+            return;
+        }
+
+        // 尝试在场景中查找
+        FocusHistoryWindowController window = FindObjectOfType<FocusHistoryWindowController>();
+        if (window != null)
+        {
+            window.OpenWindow();
+            return;
+        }
+
+        // 如果都没有，并且有预制体，则实例化
+        if (historyWindowPrefab != null && canvasTransform != null)
+        {
+            if (instantiatedHistoryWindow == null)
+            {
+                instantiatedHistoryWindow = Instantiate(historyWindowPrefab, canvasTransform);
+                Debug.Log("实例化历史记录窗口");
+            }
+
+            FocusHistoryWindowController newWindow = instantiatedHistoryWindow.GetComponent<FocusHistoryWindowController>();
+            if (newWindow != null)
+            {
+                newWindow.OpenWindow();
+            }
+        }
+        else
+        {
+            Debug.LogError("无法打开历史记录窗口：未找到窗口控制器且未配置预制体");
+        }
     }
 
     /// <summary>
@@ -605,6 +704,12 @@ public class FocusTimerController : MonoBehaviour
         {
             modeDropdown.gameObject.SetActive(!isTimerActive);
         }
+
+        // 历史记录按钮始终可用
+        if (historyButton != null)
+        {
+            historyButton.interactable = true;
+        }
     }
 
     /// <summary>
@@ -928,35 +1033,6 @@ public class FocusTimerController : MonoBehaviour
         // 例如：最后1分钟、最后30秒等
     }
 
-    /// <summary>
-    /// 计时器完成回调
-    /// </summary>
-    private void OnTimerComplete()
-    {
-        Debug.Log("计时器完成！");
-
-        // 停止计时器
-        isTimerActive = false;
-        isTimerPaused = false;
-
-        // 播放完成音效
-        if (AudioManager.Instance != null)
-        {
-            AudioManager.Instance.PlaySuccessSound();
-        }
-
-        // 显示完成提示（可以扩展）
-        ShowTimerCompleteMessage();
-
-        // 更新按钮状态
-        UpdateButtonStates();
-
-        // 强制恢复默认颜色（工作状态颜色）
-        SetTimeColors(workBlinkColor1);
-
-        // 注意：这里不调用 StopBlinkEffect()，而是让闪烁继续显示工作状态颜色
-        // 因为在 UpdateTimer() 中已经设置了 shouldBlink = true 和 isWorkStateBlink = true
-    }
 
     /// <summary>
     /// 显示计时器完成消息
@@ -1131,16 +1207,74 @@ public class FocusTimerController : MonoBehaviour
     }
 
     /// <summary>
-    /// 停止计时 - 结算经验和自律币奖励
+    /// 保存历史记录
+    /// </summary>
+    private void SaveHistoryRecord()
+    {
+        if (!isSessionActive) return;
+
+        // 计算专注分钟数（向下取整）
+        int focusedMinutes = Mathf.FloorToInt(totalFocusedSeconds / 60f);
+
+        if (focusedMinutes <= 0) return;
+
+        // 获取模式名称
+        string modeName = "";
+        switch (currentMode)
+        {
+            case TimerMode.Countdown:
+                modeName = "Countdown";
+                break;
+            case TimerMode.Countup:
+                modeName = "Countup";
+                break;
+            case TimerMode.Tomato:
+                modeName = "Tomato";
+                break;
+        }
+
+        // 计算获得奖励
+        int earnedExp = focusedMinutes * expPerMinute;
+        int earnedCoins = focusedMinutes * coinPerMinute;
+
+        // 计算开始时间和结束时间
+        DateTime endTime = DateTime.Now;
+        DateTime startTime = endTime.AddSeconds(-totalFocusedSeconds);
+
+        // 创建历史记录
+        FocusHistoryData record = new FocusHistoryData(
+            modeName,
+            startTime,
+            endTime,
+            focusedMinutes,
+            earnedExp,
+            earnedCoins
+        );
+
+        // 保存到历史记录管理器
+        if (FocusHistoryManager.Instance != null)
+        {
+            FocusHistoryManager.Instance.AddHistoryRecord(record);
+            Debug.Log($"保存专注历史记录: {record.GetModeDisplay()} {record.GetFormattedDuration()}");
+        }
+        else
+        {
+            Debug.LogError("FocusHistoryManager.Instance 为 null，无法保存历史记录");
+        }
+    }
+
+    /// <summary>
+    /// 停止计时 - 结算奖励并保存历史记录
     /// </summary>
     public void StopTimer()
     {
         if (isTimerActive)
         {
-            // 在停止计时前结算奖励（经验和自律币）
+            // 在停止计时前结算奖励并保存历史记录
             if (isSessionActive)
             {
                 AwardRewards();
+                SaveHistoryRecord();
             }
 
             isTimerActive = false;
@@ -1162,6 +1296,41 @@ public class FocusTimerController : MonoBehaviour
             Debug.Log("计时器已停止");
             UpdateButtonStates();
         }
+    }
+
+    /// <summary>
+    /// 计时器完成回调 - 自动保存历史记录
+    /// </summary>
+    private void OnTimerComplete()
+    {
+        Debug.Log("计时器完成！");
+
+        // 停止计时器
+        isTimerActive = false;
+        isTimerPaused = false;
+
+        // 在计时完成时也保存历史记录
+        if (isSessionActive)
+        {
+            AwardRewards();
+            SaveHistoryRecord();
+            isSessionActive = false;
+        }
+
+        // 播放完成音效
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlaySuccessSound();
+        }
+
+        // 显示完成提示（可以扩展）
+        ShowTimerCompleteMessage();
+
+        // 更新按钮状态
+        UpdateButtonStates();
+
+        // 强制恢复默认颜色（工作状态颜色）
+        SetTimeColors(workBlinkColor1);
     }
 
     /// <summary>
