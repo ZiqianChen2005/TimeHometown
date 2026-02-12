@@ -46,6 +46,14 @@ public class FocusTimerController : MonoBehaviour
     [SerializeField] private Color completeBlinkColor2 = new Color(0.75f, 0.375f, 0f, 1f); // 完成状态颜色2（亮橙色）
     [SerializeField] private Color pausedColor = new Color(0.5f, 0.5f, 0.5f, 1f); // 暂停状态颜色（灰色）
 
+    [Header("奖励结算")]
+    [SerializeField] private bool enableExpReward = true;      // 是否启用经验奖励
+    [SerializeField] private int expPerMinute = 1;            // 每分钟经验值
+    [SerializeField] private bool enableCoinReward = true;    // 是否启用自律币奖励
+    [SerializeField] private int coinPerMinute = 5;           // 每分钟自律币（1分钟=5自律币）
+    [SerializeField] private Text focusTimeSummaryText;       // 专注时间总结文本（可选）
+    [SerializeField] private Text rewardSummaryText;          // 奖励总结文本（可选）
+
     // 计时器模式
     public enum TimerMode
     {
@@ -65,6 +73,11 @@ public class FocusTimerController : MonoBehaviour
     private bool isTimerPaused = false;
     private float currentSeconds = 0f;
     private float targetSeconds = 0f; // 目标时间（秒）
+
+    // 专注时间统计
+    private float totalFocusedSeconds = 0f;      // 本次专注总秒数
+    private float sessionStartSeconds = 0f;       // 本次会话开始时间
+    private bool isSessionActive = false;         // 会话是否激活
 
     // 番茄钟相关
     private bool isTomatoWorkPhase = true; // true: 工作阶段, false: 休息阶段
@@ -86,6 +99,7 @@ public class FocusTimerController : MonoBehaviour
         UpdateTimeDisplay();
         UpdateButtonStates();
         InitializeModeDropdown();
+        ResetFocusStats();
     }
 
     private void Update()
@@ -248,6 +262,47 @@ public class FocusTimerController : MonoBehaviour
         UpdateTimeDisplay();
         UpdateButtonStates();
         StopBlinkEffect(); // 重置时停止闪烁
+    }
+
+    /// <summary>
+    /// 重置专注统计
+    /// </summary>
+    private void ResetFocusStats()
+    {
+        totalFocusedSeconds = 0f;
+        isSessionActive = false;
+        UpdateFocusTimeSummary();
+        UpdateRewardSummary();
+    }
+
+    /// <summary>
+    /// 更新专注时间总结显示
+    /// </summary>
+    private void UpdateFocusTimeSummary()
+    {
+        if (focusTimeSummaryText != null)
+        {
+            int totalMinutes = Mathf.FloorToInt(totalFocusedSeconds / 60f);
+            int hours = totalMinutes / 60;
+            int minutes = totalMinutes % 60;
+
+            focusTimeSummaryText.text = $"本次专注: {hours:D2}:{minutes:D2}";
+        }
+    }
+
+    /// <summary>
+    /// 更新奖励总结显示
+    /// </summary>
+    private void UpdateRewardSummary()
+    {
+        if (rewardSummaryText != null)
+        {
+            int focusedMinutes = Mathf.FloorToInt(totalFocusedSeconds / 60f);
+            int expReward = focusedMinutes * expPerMinute;
+            int coinReward = focusedMinutes * coinPerMinute;
+
+            rewardSummaryText.text = $"获得: {expReward}经验  {coinReward}自律币";
+        }
     }
 
     /// <summary>
@@ -431,7 +486,7 @@ public class FocusTimerController : MonoBehaviour
             // 计时器运行中，显示当前时间
             int displayHours, displayMinutes;
 
-            if (currentMode == TimerMode.Countdown || currentMode== TimerMode.Tomato && isTomatoWorkPhase)
+            if (currentMode == TimerMode.Countdown || currentMode == TimerMode.Tomato && isTomatoWorkPhase)
             {
                 // 倒计时/番茄钟工作模式：向上取整（Mathf.CeilToInt）
                 displayHours = Mathf.FloorToInt(currentSeconds / 3600f);
@@ -485,7 +540,6 @@ public class FocusTimerController : MonoBehaviour
     private void UpdateButtonStates()
     {
         // 时间调整按钮：计时器工作时禁用，但保持显示
-        // 需要根据实际限制条件设置可交互性
         if (hourIncreaseButton != null)
         {
             hourIncreaseButton.gameObject.SetActive(true);
@@ -675,11 +729,15 @@ public class FocusTimerController : MonoBehaviour
         bool newShouldBlink = false;
         bool newIsWorkStateBlink = true;
 
+        // 记录专注时间（每秒增加）
+        float deltaSeconds = Time.deltaTime;
+        totalFocusedSeconds += deltaSeconds;
+
         switch (currentMode)
         {
             case TimerMode.Countdown:
                 // 倒计时
-                currentSeconds -= Time.deltaTime;
+                currentSeconds -= deltaSeconds;
                 if (currentSeconds <= 0)
                 {
                     currentSeconds = 0;
@@ -699,7 +757,7 @@ public class FocusTimerController : MonoBehaviour
 
             case TimerMode.Countup:
                 // 正计时
-                currentSeconds += Time.deltaTime;
+                currentSeconds += deltaSeconds;
                 if (currentSeconds >= targetSeconds)
                 {
                     // 正计时完成，停止计时
@@ -718,7 +776,7 @@ public class FocusTimerController : MonoBehaviour
 
             case TimerMode.Tomato:
                 // 番茄钟
-                currentSeconds -= Time.deltaTime;
+                currentSeconds -= deltaSeconds;
                 if (currentSeconds <= 0)
                 {
                     // 番茄钟阶段切换
@@ -737,6 +795,8 @@ public class FocusTimerController : MonoBehaviour
         }
 
         UpdateTimeDisplay();
+        UpdateFocusTimeSummary();
+        UpdateRewardSummary();
 
         // 检查是否需要更新闪烁状态
         if (newShouldBlink != shouldBlink || newIsWorkStateBlink != isWorkStateBlink)
@@ -752,8 +812,6 @@ public class FocusTimerController : MonoBehaviour
         // 播放提示音（可选，如最后1分钟提示）
         PlayTimerAlerts();
     }
-
-
 
     /// <summary>
     /// 更新闪烁效果
@@ -893,7 +951,7 @@ public class FocusTimerController : MonoBehaviour
         // 更新按钮状态
         UpdateButtonStates();
 
-        // 【新增】强制恢复默认颜色（工作状态颜色）
+        // 强制恢复默认颜色（工作状态颜色）
         SetTimeColors(workBlinkColor1);
 
         // 注意：这里不调用 StopBlinkEffect()，而是让闪烁继续显示工作状态颜色
@@ -961,6 +1019,61 @@ public class FocusTimerController : MonoBehaviour
     }
 
     /// <summary>
+    /// 结算经验奖励和自律币奖励
+    /// </summary>
+    private void AwardRewards()
+    {
+        // 计算专注分钟数（向下取整）
+        int focusedMinutes = Mathf.FloorToInt(totalFocusedSeconds / 60f);
+
+        if (focusedMinutes <= 0)
+        {
+            Debug.Log($"专注时间不足1分钟，不获得奖励（专注秒数: {totalFocusedSeconds}s）");
+            return;
+        }
+
+        // 结算经验奖励
+        if (enableExpReward)
+        {
+            int expReward = focusedMinutes * expPerMinute;
+            Debug.Log($"专注计时结束，专注时间: {focusedMinutes}分钟，获得经验: {expReward}");
+
+            // 通知UIManager添加经验
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.AddExp(expReward);
+            }
+            else
+            {
+                Debug.LogError("UIManager.Instance 为 null，无法添加经验");
+            }
+        }
+
+        // 结算自律币奖励（1分钟=5自律币）
+        if (enableCoinReward)
+        {
+            int coinReward = focusedMinutes * coinPerMinute;
+            Debug.Log($"专注计时结束，专注时间: {focusedMinutes}分钟，获得自律币: {coinReward}");
+
+            // 通知UIManager添加自律币
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.AddCoins(coinReward);
+            }
+            else
+            {
+                Debug.LogError("UIManager.Instance 为 null，无法添加自律币");
+            }
+        }
+
+        // 播放奖励获得音效（双重奖励时播放一次即可）
+        if (AudioManager.Instance != null && (enableExpReward || enableCoinReward))
+        {
+            AudioManager.Instance.PlaySuccessSound();
+        }
+    }
+
+    /// <summary>
     /// 开始计时
     /// </summary>
     public void StartTimer()
@@ -969,6 +1082,11 @@ public class FocusTimerController : MonoBehaviour
         {
             isTimerActive = true;
             isTimerPaused = false;
+
+            // 重置本次专注的统计
+            ResetFocusStats();
+            isSessionActive = true;
+            sessionStartSeconds = Time.time;
 
             // 根据模式初始化时间
             ResetTimerForMode();
@@ -1013,14 +1131,21 @@ public class FocusTimerController : MonoBehaviour
     }
 
     /// <summary>
-    /// 停止计时
+    /// 停止计时 - 结算经验和自律币奖励
     /// </summary>
     public void StopTimer()
     {
         if (isTimerActive)
         {
+            // 在停止计时前结算奖励（经验和自律币）
+            if (isSessionActive)
+            {
+                AwardRewards();
+            }
+
             isTimerActive = false;
             isTimerPaused = false;
+            isSessionActive = false;
 
             // 停止闪烁
             StopBlinkEffect();
@@ -1028,8 +1153,11 @@ public class FocusTimerController : MonoBehaviour
             // 重置为初始状态
             ResetTimerForMode();
 
-            // 【新增】强制恢复默认颜色（工作状态颜色）
+            // 强制恢复默认颜色（工作状态颜色）
             SetTimeColors(workBlinkColor1);
+
+            // 重置专注统计
+            ResetFocusStats();
 
             Debug.Log("计时器已停止");
             UpdateButtonStates();
@@ -1058,6 +1186,40 @@ public class FocusTimerController : MonoBehaviour
     public TimerMode GetCurrentMode()
     {
         return currentMode;
+    }
+
+    /// <summary>
+    /// 获取本次专注总分钟数
+    /// </summary>
+    public int GetFocusedMinutes()
+    {
+        return Mathf.FloorToInt(totalFocusedSeconds / 60f);
+    }
+
+    /// <summary>
+    /// 获取本次专注总秒数
+    /// </summary>
+    public float GetFocusedSeconds()
+    {
+        return totalFocusedSeconds;
+    }
+
+    /// <summary>
+    /// 获取本次获得经验
+    /// </summary>
+    public int GetEarnedExp()
+    {
+        int focusedMinutes = Mathf.FloorToInt(totalFocusedSeconds / 60f);
+        return focusedMinutes * expPerMinute;
+    }
+
+    /// <summary>
+    /// 获取本次获得自律币
+    /// </summary>
+    public int GetEarnedCoins()
+    {
+        int focusedMinutes = Mathf.FloorToInt(totalFocusedSeconds / 60f);
+        return focusedMinutes * coinPerMinute;
     }
 
     /// <summary>
