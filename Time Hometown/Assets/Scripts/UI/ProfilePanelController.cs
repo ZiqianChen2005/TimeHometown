@@ -70,6 +70,13 @@ public class ProfilePanelController : MonoBehaviour
         currentUserName = PlayerPrefs.GetString("User_Name", "时光旅人");
         currentSignature = PlayerPrefs.GetString("User_Signature", "自律让我更自由！");
 
+        // 从GameDataManager获取金币数据用于显示（如果需要）
+        if (GameDataManager.Instance != null)
+        {
+            // 可以在个人信息中显示金币统计
+            Debug.Log($"当前金币: {GameDataManager.Instance.GetCoins()}");
+        }
+
         // 更新UI显示
         UpdateProfileDisplay();
 

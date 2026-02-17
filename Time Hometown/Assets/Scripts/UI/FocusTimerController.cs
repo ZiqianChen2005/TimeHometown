@@ -1109,40 +1109,34 @@ public class FocusTimerController : MonoBehaviour
         }
 
         // 结算经验奖励
-        if (enableExpReward)
+        if (enableExpReward && GameDataManager.Instance != null)
         {
             int expReward = focusedMinutes * expPerMinute;
             Debug.Log($"专注计时结束，专注时间: {focusedMinutes}分钟，获得经验: {expReward}");
 
-            // 通知UIManager添加经验
-            if (UIManager.Instance != null)
-            {
-                UIManager.Instance.AddExp(expReward);
-            }
-            else
-            {
-                Debug.LogError("UIManager.Instance 为 null，无法添加经验");
-            }
+            // 使用GameDataManager添加经验
+            GameDataManager.Instance.AddExp(expReward);
+        }
+        else
+        {
+            Debug.LogError("GameDataManager.Instance 为 null，无法添加经验");
         }
 
         // 结算自律币奖励（1分钟=5自律币）
-        if (enableCoinReward)
+        if (enableCoinReward && GameDataManager.Instance != null)
         {
             int coinReward = focusedMinutes * coinPerMinute;
             Debug.Log($"专注计时结束，专注时间: {focusedMinutes}分钟，获得自律币: {coinReward}");
 
-            // 通知UIManager添加自律币
-            if (UIManager.Instance != null)
-            {
-                UIManager.Instance.AddCoins(coinReward);
-            }
-            else
-            {
-                Debug.LogError("UIManager.Instance 为 null，无法添加自律币");
-            }
+            // 使用GameDataManager添加自律币
+            GameDataManager.Instance.AddCoins(coinReward);
+        }
+        else
+        {
+            Debug.LogError("GameDataManager.Instance 为 null，无法添加自律币");
         }
 
-        // 播放奖励获得音效（双重奖励时播放一次即可）
+        // 播放奖励获得音效
         if (AudioManager.Instance != null && (enableExpReward || enableCoinReward))
         {
             AudioManager.Instance.PlaySuccessSound();
