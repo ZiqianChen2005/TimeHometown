@@ -868,22 +868,6 @@ MonoBehaviour:
   detailDescription: {fileID: 952602336}
   buyButton: {fileID: 1208791334}
   closeDetailButton: {fileID: 710162591}
-  allFurnitureData:
-  - id: chair001
-    name: "\u5E73\u5E73\u65E0\u5947\u7684\u6905\u5B50"
-    price: 0
-    icon: {fileID: 0}
-    description: "\u8FD9\u628A\u6905\u5B50\u4ECE\u4E0A\u5230\u4E0B\u90FD\u5E73\u5E73\u65E0\u5947\uFF0C\u5373\u4FBF\u662F\u540D\u5B57\u4E5F\u4E00\u6837\u3002"
-    prefab: {fileID: 5479783148582332363, guid: f0ab2a1189f328943a1066c1351097cd, type: 3}
-    gridRequirements: []
-    width: 0
-    height: 0
-    isLocked: 0
-    unlockLevel: 0
-    requiredRoomType: 1
-    providesNewGrids: 0
-    providedGridType: 0
-    providedGridCount: 0
   gridCellSize: 100
   affordableColor: {r: 1, g: 1, b: 1, a: 1}
   unaffordableColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
@@ -1382,7 +1366,6 @@ GameObject:
   m_Component:
   - component: {fileID: 712076966}
   - component: {fileID: 712076965}
-  - component: {fileID: 712076964}
   - component: {fileID: 712076963}
   m_Layer: 0
   m_Name: Main Camera
@@ -1435,14 +1418,6 @@ MonoBehaviour:
     m_MipBias: 0
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
---- !u!81 &712076964
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 712076962}
-  m_Enabled: 1
 --- !u!20 &712076965
 Camera:
   m_ObjectHideFlags: 0
@@ -2591,6 +2566,53 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1691037374}
   m_CullTransparentMesh: 1
+--- !u!1 &1693473514
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1693473516}
+  - component: {fileID: 1693473515}
+  m_Layer: 0
+  m_Name: GameObject
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1693473515
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1693473514}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a7a2eb05235a0694bb20a0d1010f835e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  furnitureJsonFile: {fileID: 0}
+  jsonFileName: furniture_data.json
+  allFurniture: []
+--- !u!4 &1693473516
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1693473514}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 581.23615, y: -868.4225, z: -9.854781}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1812922237
 GameObject:
   m_ObjectHideFlags: 0
@@ -3093,3 +3115,4 @@ SceneRoots:
   - {fileID: 647951894}
   - {fileID: 594290195}
   - {fileID: 175725491}
+  - {fileID: 1693473516}

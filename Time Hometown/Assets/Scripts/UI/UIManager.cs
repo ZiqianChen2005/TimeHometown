@@ -49,6 +49,10 @@ public class UIManager : MonoBehaviour
     private Coroutine expFillCoroutine;
     private Queue<int> pendingExpQueue = new Queue<int>();
 
+    // 升级相关
+    private bool isLevelingUp = false;
+    private int levelUpRemainingExp = 0;
+
     // 自律币系统变量
     private int currentCoins = 0;
     private int targetCoins = 0;
@@ -207,13 +211,20 @@ public class UIManager : MonoBehaviour
             int maxExp = GameDataManager.Instance.GetMaxExpForCurrentLevel();
             UpdateExpText(newExp, maxExp);
 
+            // 如果正在升级过程中，不处理新的经验变化
+            if (isLevelingUp)
+            {
+                Debug.Log($"升级过程中，暂不处理经验变化");
+                return;
+            }
+
             // 将经验变化加入队列
             int change = newExp - (int)(expBarFill != null ? expBarFill.fillAmount * maxExp : 0);
             if (change > 0)
             {
                 pendingExpQueue.Enqueue(change);
 
-                if (!isExpBarAnimating)
+                if (!isExpBarAnimating && !isLevelingUp)
                 {
                     ProcessNextExp();
                 }
@@ -273,14 +284,18 @@ public class UIManager : MonoBehaviour
         }
 
         int expToAdd = pendingExpQueue.Dequeue();
+
+        // 获取当前经验数据
         int currentExp = GameDataManager.Instance.GetExp();
         int maxExp = GameDataManager.Instance.GetMaxExpForCurrentLevel();
 
-        // 设置缓冲层
+        Debug.Log($"处理经验添加: +{expToAdd}, 当前经验: {currentExp}/{maxExp}");
+
+        // 设置缓冲层到目标位置（最终经验值）
+        float targetFillAmount = Mathf.Min((float)currentExp / maxExp, 1f);
         if (expBarBuffer != null)
         {
-            float bufferTargetAmount = Mathf.Min((float)currentExp / maxExp, 1f);
-            expBarBuffer.fillAmount = bufferTargetAmount;
+            expBarBuffer.fillAmount = targetFillAmount;
         }
 
         // 开始填充动画
@@ -337,10 +352,84 @@ public class UIManager : MonoBehaviour
         isExpBarAnimating = false;
         expFillCoroutine = null;
 
-        // 处理队列中的下一个经验值
-        if (pendingExpQueue.Count > 0)
+        // 检查是否需要升级（经验条满了）
+        if (targetFillAmount >= 1f)
         {
-            ProcessNextExp();
+            HandleLevelUp();
+        }
+        else
+        {
+            // 处理队列中的下一个经验值
+            if (pendingExpQueue.Count > 0 && !isLevelingUp)
+            {
+                ProcessNextExp();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 处理升级逻辑
+    /// </summary>
+    private void HandleLevelUp()
+    {
+        if (isLevelingUp) return;
+
+        isLevelingUp = true;
+
+        Debug.Log("经验条已满，准备升级");
+
+        // 重置经验条为0
+        if (expBarFill != null)
+        {
+            expBarFill.fillAmount = 0f;
+        }
+
+        if (expBarBuffer != null)
+        {
+            expBarBuffer.fillAmount = 0f;
+        }
+
+        // 获取升级后的数据
+        if (GameDataManager.Instance != null)
+        {
+            int newLevel = GameDataManager.Instance.GetLevel();
+            int newExp = GameDataManager.Instance.GetExp();
+            int maxExp = GameDataManager.Instance.GetMaxExpForCurrentLevel();
+
+            UpdateLevelDisplay(newLevel);
+            UpdateExpText(newExp, maxExp);
+
+            Debug.Log($"升级完成: 新等级 {newLevel}, 剩余经验 {newExp}/{maxExp}");
+
+            // 如果还有剩余经验，继续填充
+            if (newExp > 0)
+            {
+                Debug.Log($"有剩余经验 {newExp}，继续填充");
+
+                // 重新设置缓冲层
+                float targetFillAmount = (float)newExp / maxExp;
+                if (expBarBuffer != null)
+                {
+                    expBarBuffer.fillAmount = targetFillAmount;
+                }
+
+                // 重新开始填充动画
+                StartExpFillAnimation();
+            }
+            else
+            {
+                isLevelingUp = false;
+
+                // 处理队列中的下一个经验值
+                if (pendingExpQueue.Count > 0)
+                {
+                    ProcessNextExp();
+                }
+            }
+        }
+        else
+        {
+            isLevelingUp = false;
         }
     }
 

@@ -418,4 +418,29 @@ public class GridSystemManager : MonoBehaviour
     {
         return isInitialized;
     }
+
+    /// <summary>
+    /// 根据家具ID获取家具数据
+    /// </summary>
+    public FurnitureData GetFurnitureData(string furnitureId)
+    {
+        if (FurnitureDatabase.Instance != null)
+        {
+            return FurnitureDatabase.Instance.GetFurnitureById(furnitureId);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 获取家具的格子需求
+    /// </summary>
+    public GridRequirement[] GetFurnitureGridRequirements(string furnitureId)
+    {
+        FurnitureData data = GetFurnitureData(furnitureId);
+        if (data != null)
+        {
+            return data.gridRequirements;
+        }
+        return null;
+    }
 }

@@ -22,9 +22,6 @@ public class FurnitureShopController : MonoBehaviour
     [SerializeField] private Button buyButton;
     [SerializeField] private Button closeDetailButton;
 
-    [Header("家具数据")]
-    [SerializeField] private List<FurnitureData> allFurnitureData;
-
     [Header("商店设置")]
     [SerializeField] private int gridCellSize = 100;
     [SerializeField] private Color affordableColor = Color.white;
@@ -33,6 +30,9 @@ public class FurnitureShopController : MonoBehaviour
     [Header("动画设置")]
     [SerializeField] private float fadeDuration = 0.3f;
     [SerializeField] private AnimationCurve fadeCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
+
+    // 家具数据
+    private List<FurnitureData> allFurnitureData = new List<FurnitureData>();
 
     // 当前选中的家具
     private FurnitureData selectedFurniture;
@@ -47,6 +47,7 @@ public class FurnitureShopController : MonoBehaviour
     private void Start()
     {
         InitializeShop();
+        LoadFurnitureData();
         LoadOwnedFurniture();
         UpdateCoinsDisplay();
         PopulateShopItems();
@@ -114,6 +115,22 @@ public class FurnitureShopController : MonoBehaviour
         }
 
         Debug.Log("家具商店初始化完成");
+    }
+
+    /// <summary>
+    /// 加载家具数据（从JSON数据库）
+    /// </summary>
+    private void LoadFurnitureData()
+    {
+        if (FurnitureDatabase.Instance != null)
+        {
+            allFurnitureData = FurnitureDatabase.Instance.GetAllFurniture();
+            Debug.Log($"从数据库加载了 {allFurnitureData.Count} 件家具");
+        }
+        else
+        {
+            Debug.LogError("FurnitureDatabase.Instance 为 null，无法加载家具数据");
+        }
     }
 
     /// <summary>
@@ -200,13 +217,13 @@ public class FurnitureShopController : MonoBehaviour
         }
 
         // 按房间顺序创建（客厅->书房->卧室->阳台）
-        int[] roomOrder = { 0, 1, 2, 3 };
+        int[] roomOrder = { 0, 1, 2, 3, 4 }; // 0:客厅,1:书房,2:客厅,3:卧室,4:阳台
 
         foreach (int roomType in roomOrder)
         {
             if (furnitureByRoom.ContainsKey(roomType) && furnitureByRoom[roomType].Count > 0)
             {
-                // 添加房间标题 - 直接内嵌创建，不使用预制体
+                // 添加房间标题
                 AddRoomTitle(GetRoomName(roomType));
 
                 // 添加该房间的家具
@@ -225,16 +242,16 @@ public class FurnitureShopController : MonoBehaviour
     {
         switch (roomType)
         {
-            case 0: return "客厅家具";
+            case 0: return "户外家具";
             case 1: return "书房家具";
-            case 2: return "卧室家具";
-            case 3: return "阳台家具";
+            case 2: return "客厅家具";
+            case 3: return "卧室家具";
             default: return "其他家具";
         }
     }
 
     /// <summary>
-    /// 添加房间标题 - 直接内嵌创建，不使用预制体
+    /// 添加房间标题
     /// </summary>
     private void AddRoomTitle(string title)
     {
@@ -244,8 +261,8 @@ public class FurnitureShopController : MonoBehaviour
 
         // 添加Image组件作为背景
         Image background = titleObj.AddComponent<Image>();
-        background.color = new Color(0.95f, 0.95f, 0.95f, 1f); // 浅灰色背景
-        background.raycastTarget = false; // 不需要响应点击
+        background.color = new Color(0.95f, 0.95f, 0.95f, 1f);
+        background.raycastTarget = false;
 
         // 添加Text组件
         GameObject textObj = new GameObject("TitleText");
@@ -256,7 +273,7 @@ public class FurnitureShopController : MonoBehaviour
         titleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         titleText.fontSize = 45;
         titleText.fontStyle = FontStyle.Bold;
-        titleText.color = new Color(0.2f, 0.2f, 0.2f, 1f); // 深灰色
+        titleText.color = new Color(0.2f, 0.2f, 0.2f, 1f);
         titleText.alignment = TextAnchor.MiddleLeft;
         titleText.raycastTarget = false;
 
@@ -265,23 +282,21 @@ public class FurnitureShopController : MonoBehaviour
         textRect.anchorMin = Vector2.zero;
         textRect.anchorMax = Vector2.one;
         textRect.pivot = new Vector2(0.5f, 0.5f);
-        textRect.offsetMin = new Vector2(20, 5);  // 左20，下5
-        textRect.offsetMax = new Vector2(-20, -5); // 右-20，上-5
+        textRect.offsetMin = new Vector2(20, 5);
+        textRect.offsetMax = new Vector2(-20, -5);
 
         // 设置标题对象的RectTransform
         RectTransform rectTransform = titleObj.GetComponent<RectTransform>();
         rectTransform.anchorMin = new Vector2(0, 1);
         rectTransform.anchorMax = new Vector2(1, 1);
         rectTransform.pivot = new Vector2(0.5f, 1);
-        rectTransform.sizeDelta = new Vector2(0, 100); // 高度
+        rectTransform.sizeDelta = new Vector2(0, 100);
 
-        // 添加布局元素以固定高度
+        // 添加布局元素
         LayoutElement layout = titleObj.AddComponent<LayoutElement>();
         layout.preferredHeight = 100;
         layout.minHeight = 100;
         layout.flexibleHeight = 0;
-
-        Debug.Log($"添加房间标题: {title}");
     }
 
     /// <summary>
