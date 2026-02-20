@@ -6,9 +6,9 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
 {
     [Header("格子组件")]
     [SerializeField] private Image backgroundImage;
-    [SerializeField] private Image highlightImage;
-    [SerializeField] private Image furnitureIcon;      // 放置家具后的图标
-    [SerializeField] private Text gridInfoText;        // 调试用，可隐藏
+    [SerializeField] private Image highlightImage;      // 高亮图片组件
+    [SerializeField] private Image furnitureIcon;       // 放置家具后的图标
+    [SerializeField] private Text gridInfoText;         // 调试用，可隐藏
 
     [Header("格子颜色")]
     [SerializeField] private Color floorColor = new Color(1f, 0.92f, 0.016f, 1f);      // 黄色 #FFFF00
@@ -18,14 +18,9 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
     [SerializeField] private Color decorationColor = new Color(0.8f, 0f, 0.8f, 1f);    // 紫色 #CC00CC
     [SerializeField] private Color forbiddenColor = new Color(1f, 0f, 0f, 0.5f);       // 红色半透明
 
-    [Header("高亮颜色")]
-    [SerializeField] private Color highlightValidColor = new Color(1f, 1f, 1f, 0.3f);  // 白色半透明 - 可放置
-    [SerializeField] private Color highlightInvalidColor = new Color(1f, 0f, 0f, 0.3f); // 红色半透明 - 不可放置
-    [SerializeField] private Color highlightSelectedColor = new Color(0f, 1f, 0f, 0.3f); // 绿色半透明 - 选中
-
     [Header("编辑模式")]
     [SerializeField] private float normalAlpha = 0f;           // 正常模式透明度
-    [SerializeField] private float editModeAlpha = 1f;       // 编辑模式透明度
+    [SerializeField] private float editModeAlpha = 1f;         // 编辑模式透明度
 
     // 格子数据
     private GridType gridType;
@@ -50,21 +45,29 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         if (backgroundImage == null)
             backgroundImage = gameObject.AddComponent<Image>();
 
-        // 初始化高亮图片
+        // 确保高亮图片存在
         if (highlightImage == null)
         {
-            GameObject highlightObj = new GameObject("Highlight");
-            highlightObj.transform.SetParent(transform, false);
-            highlightImage = highlightObj.AddComponent<Image>();
+            // 尝试在子对象中查找
+            highlightImage = GetComponentInChildren<Image>(true);
 
-            RectTransform highlightRect = highlightImage.rectTransform;
-            highlightRect.anchorMin = Vector2.zero;
-            highlightRect.anchorMax = Vector2.one;
-            highlightRect.offsetMin = Vector2.zero;
-            highlightRect.offsetMax = Vector2.zero;
+            if (highlightImage == null)
+            {
+                GameObject highlightObj = new GameObject("Highlight");
+                highlightObj.transform.SetParent(transform, false);
+                highlightImage = highlightObj.AddComponent<Image>();
+            }
         }
 
+        // 设置高亮图片的RectTransform铺满整个格子
+        RectTransform highlightRect = highlightImage.rectTransform;
+        highlightRect.anchorMin = Vector2.zero;
+        highlightRect.anchorMax = Vector2.one;
+        highlightRect.offsetMin = Vector2.zero;
+        highlightRect.offsetMax = Vector2.zero;
+
         highlightImage.gameObject.SetActive(false);
+        highlightImage.raycastTarget = false; // 确保高亮不阻挡点击
 
         // 初始化家具图标
         if (furnitureIcon == null)
@@ -81,6 +84,7 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         }
 
         furnitureIcon.gameObject.SetActive(false);
+        furnitureIcon.raycastTarget = false; // 确保图标不阻挡点击
     }
 
     /// <summary>
@@ -133,6 +137,80 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         }
     }
 
+    public void PlaceFurniture(string furnitureId, Sprite icon, bool providesNewGrids = false, GridType newGridType = GridType.Forbidden)
+    {
+        // 如果格子已被占用，先记录警告
+        if (isOccupied)
+        {
+            Debug.LogWarning($"格子 {gridPosition} 尝试放置家具 {furnitureId}，但已被 {placedFurnitureId} 占用");
+            return;
+        }
+
+        isOccupied = true;
+        placedFurnitureId = furnitureId;
+
+        if (furnitureIcon != null && icon != null)
+        {
+            furnitureIcon.sprite = icon;
+            furnitureIcon.gameObject.SetActive(true);
+        }
+
+        // 根据家具是否提供新格子来更新格子类型
+        if (providesNewGrids)
+        {
+            // 家具提供新格子，更新为提供的类型
+            gridType = newGridType;
+            Debug.Log($"格子 {gridPosition} 类型更新为: {gridType} (家具提供新格子)");
+        }
+        else
+        {
+            // 家具不提供格子，变为禁止格
+            gridType = GridType.Forbidden;
+            Debug.Log($"格子 {gridPosition} 类型更新为: Forbidden (家具不提供格子)");
+        }
+
+        // 更新格子颜色
+        UpdateGridColor();
+
+        Debug.Log($"格子 {gridPosition} 放置家具: {furnitureId}");
+    }
+
+    /// <summary>
+    /// 移除家具
+    /// </summary>
+    public void RemoveFurniture(GridType originalGridType)
+    {
+        if (!isOccupied)
+        {
+            Debug.LogWarning($"格子 {gridPosition} 尝试移除家具，但未被占用");
+            return;
+        }
+
+        isOccupied = false;
+        placedFurnitureId = null;
+
+        if (furnitureIcon != null)
+        {
+            furnitureIcon.gameObject.SetActive(false);
+        }
+
+        // 恢复原始格子类型
+        gridType = originalGridType;
+
+        // 更新格子颜色
+        UpdateGridColor();
+
+        Debug.Log($"格子 {gridPosition} 家具已移除，恢复为原始类型: {gridType}");
+    }
+
+    /// <summary>
+    /// 获取格子原始类型（在放置家具前）
+    /// </summary>
+    public GridType GetOriginalGridType()
+    {
+        return gridType;
+    }
+
     /// <summary>
     /// 更新格子颜色
     /// </summary>
@@ -151,6 +229,14 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         else
         {
             color.a = normalAlpha;
+        }
+
+        // 如果格子被占用，稍微调暗
+        if (isOccupied)
+        {
+            color.r *= 0.7f;
+            color.g *= 0.7f;
+            color.b *= 0.7f;
         }
 
         backgroundImage.color = color;
@@ -177,37 +263,9 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         backgroundImage.color = color;
     }
 
-    /// <summary>
-    /// 放置家具
-    /// </summary>
-    public void PlaceFurniture(string furnitureId, Sprite icon)
-    {
-        isOccupied = true;
-        placedFurnitureId = furnitureId;
-
-        if (furnitureIcon != null && icon != null)
-        {
-            furnitureIcon.sprite = icon;
-            furnitureIcon.gameObject.SetActive(true);
-        }
-    }
 
     /// <summary>
-    /// 移除家具
-    /// </summary>
-    public void RemoveFurniture()
-    {
-        isOccupied = false;
-        placedFurnitureId = null;
-
-        if (furnitureIcon != null)
-        {
-            furnitureIcon.gameObject.SetActive(false);
-        }
-    }
-
-    /// <summary>
-    /// 设置高亮状态
+    /// 设置高亮状态 - 使用高亮图片组件
     /// </summary>
     public void SetHighlight(bool valid, bool selected = false)
     {
@@ -218,19 +276,6 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         isSelected = selected;
 
         highlightImage.gameObject.SetActive(true);
-
-        if (selected)
-        {
-            highlightImage.color = highlightSelectedColor;
-        }
-        else if (valid)
-        {
-            highlightImage.color = highlightValidColor;
-        }
-        else
-        {
-            highlightImage.color = highlightInvalidColor;
-        }
     }
 
     /// <summary>
@@ -264,6 +309,12 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
 
         // 触发格子悬停事件
         GridSystemManager.Instance?.OnGridHovered(gridPosition, gridType, isOccupied);
+
+        // 只有在编辑模式下才高亮当前格子
+        if (isEditMode)
+        {
+            SetHighlight(true);
+        }
     }
 
     /// <summary>
@@ -275,6 +326,12 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
 
         // 触发格子悬停结束事件
         GridSystemManager.Instance?.OnGridHoverEnd();
+
+        // 只有在编辑模式下才清除当前格子的高亮
+        if (isEditMode)
+        {
+            ClearHighlight();
+        }
     }
 
     // 属性访问

@@ -16,6 +16,10 @@ public class FurnitureItemUI : MonoBehaviour
     [SerializeField] private Color ownedColor = new Color(0.8f, 1f, 0.8f, 1f); // 浅绿色
     [SerializeField] private Color lockedColor = new Color(0.7f, 0.7f, 0.7f, 0.5f); // 灰色半透明
 
+    [Header("尺寸设置")]
+    [SerializeField] private float maxSize = 150f; // 最大边长为150像素
+    [SerializeField] private float iconPadding = 10f; // 图标内边距
+
     private FurnitureData furnitureData;
     private System.Action<FurnitureData> onClickCallback;
 
@@ -37,6 +41,53 @@ public class FurnitureItemUI : MonoBehaviour
 
         // 更新UI显示
         UpdateUI();
+
+        // 根据家具尺寸调整图标大小
+        AdjustIconSize();
+    }
+
+    /// <summary>
+    /// 根据家具宽高比调整图标大小
+    /// </summary>
+    private void AdjustIconSize()
+    {
+        if (furnitureData == null || iconImage == null) return;
+
+        // 获取家具宽高
+        int width = furnitureData.width;
+        int height = furnitureData.height;
+
+        // 计算宽高比
+        float aspectRatio = (float)width / height;
+
+        // 获取图标RectTransform
+        RectTransform iconRect = iconImage.rectTransform;
+
+        // 重置锚点和中心点
+        iconRect.anchorMin = new Vector2(0.5f, 0.5f);
+        iconRect.anchorMax = new Vector2(0.5f, 0.5f);
+        iconRect.pivot = new Vector2(0.5f, 0.5f);
+
+        // 根据宽高比设置尺寸
+        if (aspectRatio >= 1f)
+        {
+            // 宽度 >= 高度：宽度为maxSize，高度按比例计算
+            float finalWidth = maxSize - iconPadding * 2;
+            float finalHeight = finalWidth / aspectRatio;
+            iconRect.sizeDelta = new Vector2(finalWidth, finalHeight);
+        }
+        else
+        {
+            // 高度 > 宽度：高度为maxSize，宽度按比例计算
+            float finalHeight = maxSize - iconPadding * 2;
+            float finalWidth = finalHeight * aspectRatio;
+            iconRect.sizeDelta = new Vector2(finalWidth, finalHeight);
+        }
+
+        // 确保图标不变形
+        iconImage.preserveAspect = true;
+
+        Debug.Log($"家具 {furnitureData.name} 图标尺寸调整为: {iconRect.sizeDelta} (宽高比: {aspectRatio:F2})");
     }
 
     /// <summary>

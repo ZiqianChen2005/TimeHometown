@@ -23,6 +23,9 @@ public class GridSystemManager : MonoBehaviour
     [SerializeField] private int topMargin = 110;              // 上边距
     [SerializeField] private int bottomMargin = 110;           // 下边距
 
+    [Header("高亮设置")]
+    [SerializeField] private bool highlightOnHover = true;     // 悬停时高亮
+
     // 格子数据
     private GridCellUI[][,] roomGrids;                         // 每个房间的格子数组
     private Dictionary<string, List<Vector2Int>> placedFurniture = new Dictionary<string, List<Vector2Int>>();
@@ -30,6 +33,7 @@ public class GridSystemManager : MonoBehaviour
     // 当前选中的家具和格子
     private FurnitureData currentSelectedFurniture;
     private Vector2Int? hoveredGridPosition;
+    private GridCellUI currentlyHighlightedCell;               // 当前高亮的格子
     private List<Vector2Int> currentPlacementCells = new List<Vector2Int>();
 
     // 事件
@@ -268,52 +272,26 @@ public class GridSystemManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 放置家具
+    /// 高亮显示单个格子
     /// </summary>
-    public bool PlaceFurniture(int roomIndex, FurnitureData furniture, Vector2Int topLeftCell)
+    public void HighlightSingleCell(int roomIndex, Vector2Int cellPos)
     {
-        if (!CanPlaceFurniture(roomIndex, furniture, topLeftCell))
-            return false;
+        // 清除之前的高亮
+        ClearAllHighlights();
 
         GridCellUI[,] grid = GetCurrentRoomGrid(roomIndex);
-        List<Vector2Int> occupiedCells = new List<Vector2Int>();
+        if (grid == null) return;
 
-        // 占用格子
-        for (int x = 0; x < furniture.width; x++)
+        if (cellPos.x >= 0 && cellPos.x < columns && cellPos.y >= 0 && cellPos.y < rows)
         {
-            for (int y = 0; y < furniture.height; y++)
+            GridCellUI cell = grid[cellPos.x, cellPos.y];
+            if (cell != null)
             {
-                int placeX = topLeftCell.x + x;
-                int placeY = topLeftCell.y + y;
-
-                grid[placeX, placeY].PlaceFurniture(furniture.id, furniture.icon);
-                occupiedCells.Add(new Vector2Int(placeX, placeY));
+                cell.SetHighlight(true);
+                currentlyHighlightedCell = cell;
+                Debug.Log($"高亮单个格子: ({cellPos.x}, {cellPos.y})");
             }
         }
-
-        // 记录放置的家具
-        placedFurniture[furniture.id] = occupiedCells;
-
-        Debug.Log($"放置家具: {furniture.name} 在房间 {roomIndex} 位置 {topLeftCell}");
-        return true;
-    }
-
-    /// <summary>
-    /// 移除家具
-    /// </summary>
-    public void RemoveFurniture(int roomIndex, string furnitureId)
-    {
-        if (!placedFurniture.ContainsKey(furnitureId)) return;
-
-        GridCellUI[,] grid = GetCurrentRoomGrid(roomIndex);
-
-        foreach (var pos in placedFurniture[furnitureId])
-        {
-            grid[pos.x, pos.y].RemoveFurniture();
-        }
-
-        placedFurniture.Remove(furnitureId);
-        Debug.Log($"移除家具: {furnitureId}");
     }
 
     /// <summary>
@@ -322,7 +300,7 @@ public class GridSystemManager : MonoBehaviour
     public void HighlightPlacementArea(int roomIndex, FurnitureData furniture, Vector2Int hoverCell)
     {
         // 清除之前的高亮
-        ClearHighlight();
+        ClearAllHighlights();
 
         if (furniture == null) return;
 
@@ -355,8 +333,16 @@ public class GridSystemManager : MonoBehaviour
     /// <summary>
     /// 清除所有高亮
     /// </summary>
-    public void ClearHighlight()
+    public void ClearAllHighlights()
     {
+        // 清除单个格子高亮
+        if (currentlyHighlightedCell != null)
+        {
+            currentlyHighlightedCell.ClearHighlight();
+            currentlyHighlightedCell = null;
+        }
+
+        // 清除放置区域高亮
         foreach (var pos in currentPlacementCells)
         {
             // 需要知道是哪个房间...
@@ -393,12 +379,23 @@ public class GridSystemManager : MonoBehaviour
         hoveredGridPosition = position;
         OnGridHoveredEvent?.Invoke(position, type, occupied);
 
-        // 如果有选中的家具，显示放置预览
+        // 获取当前房间索引和编辑模式状态
+        HomeSystemController homeSystem = FindObjectOfType<HomeSystemController>();
+        int currentRoom = homeSystem?.GetCurrentRoomIndex() ?? 0;
+        bool isEditMode = homeSystem?.IsEditMode() ?? false;
+
+        // 只有在编辑模式下才显示高亮
+        if (!isEditMode) return;
+
+        // 如果有选中的家具，显示家具放置预览
         if (currentSelectedFurniture != null)
         {
-            // 需要知道当前房间索引
-            int currentRoom = FindObjectOfType<HomeSystemController>()?.GetCurrentRoomIndex() ?? 0;
             HighlightPlacementArea(currentRoom, currentSelectedFurniture, position);
+        }
+        // 否则只高亮当前格子
+        else if (highlightOnHover)
+        {
+            HighlightSingleCell(currentRoom, position);
         }
     }
 
@@ -407,8 +404,15 @@ public class GridSystemManager : MonoBehaviour
         hoveredGridPosition = null;
         OnGridHoverEndEvent?.Invoke();
 
-        // 清除放置预览
-        ClearHighlight();
+        // 获取编辑模式状态
+        HomeSystemController homeSystem = FindObjectOfType<HomeSystemController>();
+        bool isEditMode = homeSystem?.IsEditMode() ?? false;
+
+        // 只有在编辑模式下才清除高亮
+        if (isEditMode)
+        {
+            ClearAllHighlights();
+        }
     }
 
     /// <summary>
@@ -442,5 +446,157 @@ public class GridSystemManager : MonoBehaviour
             return data.gridRequirements;
         }
         return null;
+    }
+
+    public bool PlaceFurniture(int roomIndex, FurnitureData furniture, Vector2Int topLeftCell)
+    {
+        if (!CanPlaceFurniture(roomIndex, furniture, topLeftCell))
+        {
+            Debug.LogWarning($"无法放置家具: {furniture.name} 在位置 ({topLeftCell.x}, {topLeftCell.y})");
+            return false;
+        }
+
+        GridCellUI[,] grid = GetCurrentRoomGrid(roomIndex);
+        if (grid == null)
+        {
+            Debug.LogError($"房间 {roomIndex} 的格子数组为空");
+            return false;
+        }
+
+        List<Vector2Int> occupiedCells = new List<Vector2Int>();
+        string furnitureId = furniture.id;
+
+        // **存储每个格子的原始类型，以便后续恢复**
+        Dictionary<Vector2Int, GridType> originalGridTypes = new Dictionary<Vector2Int, GridType>();
+
+        // 占用格子
+        for (int x = 0; x < furniture.width; x++)
+        {
+            for (int y = 0; y < furniture.height; y++)
+            {
+                int placeX = topLeftCell.x + x;
+                int placeY = topLeftCell.y + y;
+
+                // 确保格子存在
+                if (placeX >= 0 && placeX < columns && placeY >= 0 && placeY < rows)
+                {
+                    GridCellUI cell = grid[placeX, placeY];
+                    if (cell != null)
+                    {
+                        // **记录原始格子类型**
+                        Vector2Int pos = new Vector2Int(placeX, placeY);
+                        originalGridTypes[pos] = cell.GetOriginalGridType();
+
+                        // **根据家具是否提供新格子来更新格子类型**
+                        if (furniture.providesNewGrids)
+                        {
+                            // 家具提供新格子，更新为提供的类型
+                            cell.PlaceFurniture(furnitureId, furniture.icon, true, furniture.providedGridType);
+                        }
+                        else
+                        {
+                            // 家具不提供格子，变为禁止格
+                            cell.PlaceFurniture(furnitureId, furniture.icon, false);
+                        }
+
+                        // 记录被占用的格子
+                        occupiedCells.Add(new Vector2Int(placeX, placeY));
+
+                        Debug.Log($"格子 ({placeX}, {placeY}) 已被家具 {furniture.name} 占用，原始类型: {originalGridTypes[pos]}");
+                    }
+                }
+            }
+        }
+
+        // **存储家具放置信息，包括原始格子类型**
+        FurniturePlacementInfo placementInfo = new FurniturePlacementInfo
+        {
+            furnitureId = furnitureId,
+            furnitureData = furniture,
+            topLeftCell = topLeftCell,
+            occupiedCells = occupiedCells,
+            originalGridTypes = originalGridTypes
+        };
+
+        // 如果家具已存在，先移除旧的占用记录
+        if (placedFurniture.ContainsKey(furnitureId))
+        {
+            RemoveFurniture(roomIndex, furnitureId);
+        }
+
+        placedFurnitureInfo[furnitureId] = placementInfo;
+
+        Debug.Log($"放置家具成功: {furniture.name} 在房间 {roomIndex} 位置 {topLeftCell}，占用 {occupiedCells.Count} 格" +
+                  (furniture.providesNewGrids ? $"，提供新格子类型: {furniture.providedGridType}" : "，变为禁止格"));
+        return true;
+    }
+
+    /// <summary>
+    /// 移除家具
+    /// </summary>
+    public void RemoveFurniture(int roomIndex, string furnitureId)
+    {
+        if (!placedFurnitureInfo.ContainsKey(furnitureId))
+        {
+            Debug.LogWarning($"找不到家具: {furnitureId}");
+            return;
+        }
+
+        GridCellUI[,] grid = GetCurrentRoomGrid(roomIndex);
+        if (grid == null) return;
+
+        FurniturePlacementInfo info = placedFurnitureInfo[furnitureId];
+
+        // 遍历所有被占用的格子并清除，恢复原始类型
+        foreach (var pos in info.occupiedCells)
+        {
+            if (pos.x >= 0 && pos.x < columns && pos.y >= 0 && pos.y < rows)
+            {
+                GridCellUI cell = grid[pos.x, pos.y];
+                if (cell != null)
+                {
+                    // **恢复原始格子类型**
+                    GridType originalType = info.originalGridTypes[pos];
+                    cell.RemoveFurniture(originalType);
+                    Debug.Log($"格子 ({pos.x}, {pos.y}) 的家具已移除，恢复为类型: {originalType}");
+                }
+            }
+        }
+
+        placedFurnitureInfo.Remove(furnitureId);
+        Debug.Log($"移除家具: {furnitureId}");
+    }
+
+    // 添加字典存储家具放置信息
+    private Dictionary<string, FurniturePlacementInfo> placedFurnitureInfo = new Dictionary<string, FurniturePlacementInfo>();
+
+    /// <summary>
+    /// 家具放置信息类
+    /// </summary>
+    [System.Serializable]
+    public class FurniturePlacementInfo
+    {
+        public string furnitureId;
+        public FurnitureData furnitureData;
+        public Vector2Int topLeftCell;
+        public List<Vector2Int> occupiedCells;
+        public Dictionary<Vector2Int, GridType> originalGridTypes;
+    }
+
+    /// <summary>
+    /// 获取房间内所有已放置的家具（用于调试）
+    /// </summary>
+    public List<string> GetPlacedFurnitureInRoom(int roomIndex)
+    {
+        List<string> result = new List<string>();
+
+        foreach (var kvp in placedFurniture)
+        {
+            // 这里简化处理，实际应该根据格子位置判断是否在当前房间
+            // 因为当前实现没有按房间存储，所以暂时返回所有
+            result.Add(kvp.Key);
+        }
+
+        return result;
     }
 }

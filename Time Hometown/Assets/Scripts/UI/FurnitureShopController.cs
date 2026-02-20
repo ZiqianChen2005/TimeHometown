@@ -356,7 +356,12 @@ public class FurnitureShopController : MonoBehaviour
         }
 
         if (detailIcon != null && furniture.icon != null)
+        {
             detailIcon.sprite = furniture.icon;
+
+            // 根据家具尺寸调整详情图标大小
+            AdjustDetailIconSize(furniture);
+        }
 
         if (detailName != null)
             detailName.text = furniture.name;
@@ -382,6 +387,55 @@ public class FurnitureShopController : MonoBehaviour
         detailPanel.SetActive(true);
         fadeCoroutine = StartCoroutine(FadeInDetailPanel());
     }
+
+    /// <summary>
+    /// 调整详情图标大小
+    /// </summary>
+    private void AdjustDetailIconSize(FurnitureData furniture)
+    {
+        if (detailIcon == null) return;
+
+        // 获取家具宽高
+        int width = furniture.width;
+        int height = furniture.height;
+
+        // 计算宽高比
+        float aspectRatio = (float)width / height;
+
+        // 获取图标RectTransform
+        RectTransform iconRect = detailIcon.rectTransform;
+
+        // 重置锚点和中心点
+        iconRect.anchorMin = new Vector2(0.5f, 0.5f);
+        iconRect.anchorMax = new Vector2(0.5f, 0.5f);
+        iconRect.pivot = new Vector2(0.5f, 0.5f);
+
+        // 详情图标最大尺寸设为200（可以调整）
+        float maxDetailSize = 150f;
+        float padding = 10f;
+
+        // 根据宽高比设置尺寸
+        if (aspectRatio >= 1f)
+        {
+            // 宽度 >= 高度：宽度为maxDetailSize，高度按比例计算
+            float finalWidth = maxDetailSize - padding * 2;
+            float finalHeight = finalWidth / aspectRatio;
+            iconRect.sizeDelta = new Vector2(finalWidth, finalHeight);
+        }
+        else
+        {
+            // 高度 > 宽度：高度为maxDetailSize，宽度按比例计算
+            float finalHeight = maxDetailSize - padding * 2;
+            float finalWidth = finalHeight * aspectRatio;
+            iconRect.sizeDelta = new Vector2(finalWidth, finalHeight);
+        }
+
+        // 确保图标不变形
+        detailIcon.preserveAspect = true;
+
+        Debug.Log($"详情图标尺寸调整为: {iconRect.sizeDelta} (宽高比: {aspectRatio:F2})");
+    }
+
 
     /// <summary>
     /// 购买按钮点击事件
