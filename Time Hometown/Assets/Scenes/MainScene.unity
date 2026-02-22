@@ -5042,6 +5042,8 @@ MonoBehaviour:
   testMoveButton: {fileID: 0}
   uiFadeDuration: 0.5
   profilePanelController: {fileID: 0}
+  userNameText: {fileID: 1775006399}
+  continuousDaysText: {fileID: 1343148600}
   expBarContainer: {fileID: 1362751454}
   expBarBackground: {fileID: 1301520682}
   expBarBuffer: {fileID: 933820167}

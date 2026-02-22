@@ -39,6 +39,7 @@ public class GridSystemManager : MonoBehaviour
     // 家具移动相关
     private bool isMovingFurniture = false;
     private FurniturePlacementInfo movingFurnitureInfo;
+    private List<FurniturePlacementInfo> movingChildrenInfo;   // 正在移动的子家具
     private Vector2Int originalTopLeftCell;                     // 原始位置
 
     // 事件
@@ -170,7 +171,7 @@ public class GridSystemManager : MonoBehaviour
     /// <summary>
     /// 创建家具图标
     /// </summary>
-    private GameObject CreateFurnitureIcon(int roomIndex, FurnitureData furniture, Vector2Int topLeftCell, string instanceId)
+    private GameObject CreateFurnitureIcon(int roomIndex, FurnitureData furniture, Vector2Int topLeftCell, string instanceId, bool isStack = false)
     {
         if (roomIndex < 0 || roomIndex >= roomFurnitureContainers.Length) return null;
 
@@ -238,7 +239,7 @@ public class GridSystemManager : MonoBehaviour
         return roomGrids[roomIndex];
     }
 
-    public bool CanPlaceFurniture(int roomIndex, FurnitureData furniture, Vector2Int topLeftCell)
+    public bool CanPlaceFurniture(int roomIndex, FurnitureData furniture, Vector2Int topLeftCell, bool allowStack = true)
     {
         if (furniture == null) return false;
 
@@ -254,6 +255,9 @@ public class GridSystemManager : MonoBehaviour
             return false;
         }
 
+        bool allCellsSame = true;
+        bool canStack = true;
+
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
@@ -266,27 +270,14 @@ public class GridSystemManager : MonoBehaviour
                 if (cell == null || !cell.IsSelectable)
                     return false;
 
-                // 移动模式下的特殊处理
-                if (isMovingFurniture && movingFurnitureInfo != null)
+                // 检查是否可以叠加
+                if (cell.IsOccupied)
                 {
-                    // 检查是否在原始位置范围内
-                    bool isOriginalCell = false;
-                    foreach (var pos in movingFurnitureInfo.occupiedCells)
+                    if (!allowStack || !cell.CanStack)
                     {
-                        if (pos.x == checkX && pos.y == checkY)
-                        {
-                            isOriginalCell = true;
-                            break;
-                        }
-                    }
-
-                    // 如果不是原始位置的格子且被占用，则不可放置
-                    if (!isOriginalCell && cell.IsOccupied)
                         return false;
-                }
-                else if (cell.IsOccupied)
-                {
-                    return false;
+                    }
+                    canStack = true;
                 }
 
                 bool typeValid = false;
@@ -301,10 +292,32 @@ public class GridSystemManager : MonoBehaviour
 
                 if (!typeValid)
                     return false;
+
+                // 检查所有格子类型是否相同（用于叠加判断）
+                if (x == 0 && y == 0)
+                {
+                    allCellsSame = true;
+                }
             }
         }
 
+        // 如果是叠加放置，需要所有格子类型相同
+        if (canStack && !allCellsSame)
+        {
+            Debug.Log("叠加放置要求所有格子类型相同");
+            return false;
+        }
+
         return true;
+    }
+
+    /// <summary>
+    /// 检查包含子家具的放置是否可行 - 只需检查主家具
+    /// </summary>
+    private bool CanPlaceFurnitureWithChildren(int roomIndex, FurniturePlacementInfo mainInfo, Vector2Int targetCell)
+    {
+        // 只检查主家具是否可放置
+        return CanPlaceFurniture(roomIndex, mainInfo.furnitureData, targetCell);
     }
 
     public void HighlightSingleCell(int roomIndex, Vector2Int cellPos)
@@ -355,6 +368,99 @@ public class GridSystemManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 高亮显示包含子家具的放置区域（保持相对位置）
+    /// </summary>
+    private void HighlightPlacementAreaWithChildren(int roomIndex, FurniturePlacementInfo mainInfo, List<FurniturePlacementInfo> childrenInfo, Vector2Int hoverCell)
+    {
+        ClearAllHighlights();
+
+        if (mainInfo == null) return;
+
+        GridCellUI[,] grid = GetCurrentRoomGrid(roomIndex);
+        if (grid == null) return;
+
+        // 计算偏移量（相对于主家具的原始位置）
+        Vector2Int offset = hoverCell - mainInfo.topLeftCell;
+
+        // 只检查主家具是否可放置
+        bool canPlace = CanPlaceFurniture(roomIndex, mainInfo.furnitureData, hoverCell);
+
+        // 高亮主家具区域
+        for (int x = 0; x < mainInfo.furnitureData.width; x++)
+        {
+            for (int y = 0; y < mainInfo.furnitureData.height; y++)
+            {
+                int checkX = hoverCell.x + x;
+                int checkY = hoverCell.y + y;
+
+                if (checkX >= 0 && checkX < columns && checkY >= 0 && checkY < rows)
+                {
+                    grid[checkX, checkY].SetHighlight(canPlace);
+                    currentPlacementCells.Add(new Vector2Int(checkX, checkY));
+                }
+            }
+        }
+
+        // 高亮所有子家具区域（保持相对位置）
+        foreach (var childInfo in childrenInfo)
+        {
+            Vector2Int childTarget = childInfo.topLeftCell + offset;
+
+            for (int x = 0; x < childInfo.furnitureData.width; x++)
+            {
+                for (int y = 0; y < childInfo.furnitureData.height; y++)
+                {
+                    int checkX = childTarget.x + x;
+                    int checkY = childTarget.y + y;
+
+                    if (checkX >= 0 && checkX < columns && checkY >= 0 && checkY < rows)
+                    {
+                        grid[checkX, checkY].SetHighlight(canPlace);
+                        currentPlacementCells.Add(new Vector2Int(checkX, checkY));
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 尝试完成移动家具组（松手时调用）- 保持子家具相对位置
+    /// </summary>
+    public bool TryFinishMovingFurniture(int roomIndex, Vector2Int targetCell)
+    {
+        if (!isMovingFurniture || movingFurnitureInfo == null) return false;
+
+        HomeSystemController homeSystem = FindObjectOfType<HomeSystemController>();
+        bool isEditMode = homeSystem?.IsEditMode() ?? false;
+
+        if (!isEditMode)
+        {
+            CancelMovingFurniture();
+            return false;
+        }
+
+        // 只需要检查主家具是否可放置
+        if (!CanPlaceFurniture(roomIndex, movingFurnitureInfo.furnitureData, targetCell))
+        {
+            Debug.Log("新位置不可放置，取消移动");
+            CancelMovingFurniture();
+            return false;
+        }
+
+        // 在新位置放置主家具和所有子家具（保持相对位置）
+        PlaceFurnitureWithChildren(roomIndex, movingFurnitureInfo, movingChildrenInfo, targetCell);
+
+        Debug.Log($"完成移动家具组: 主家具 {movingFurnitureInfo.furnitureData.name} 到位置 {targetCell}，保持了 {movingChildrenInfo.Count} 个子家具的相对位置");
+
+        // 重置移动状态
+        isMovingFurniture = false;
+        movingFurnitureInfo = null;
+        movingChildrenInfo = null;
+
+        return true;
+    }
+
     public void ClearAllHighlights()
     {
         if (currentlyHighlightedCell != null)
@@ -401,8 +507,8 @@ public class GridSystemManager : MonoBehaviour
 
         if (isMovingFurniture && movingFurnitureInfo != null)
         {
-            // 移动模式下，显示放置预览
-            HighlightPlacementArea(currentRoom, movingFurnitureInfo.furnitureData, position);
+            // 移动模式下，显示放置预览（包括子家具，保持相对位置）
+            HighlightPlacementAreaWithChildren(currentRoom, movingFurnitureInfo, movingChildrenInfo, position);
         }
         else if (currentSelectedFurniture != null)
         {
@@ -461,90 +567,165 @@ public class GridSystemManager : MonoBehaviour
 
         if (infoToMove == null) return;
 
-        // 按下时立即开始移动家具
-        StartMovingFurniture(currentRoom, infoToMove);
+        // 查找所有子家具（通过格子叠加关系）
+        List<FurniturePlacementInfo> childrenToMove = new List<FurniturePlacementInfo>();
+        GridCellUI[,] grid = GetCurrentRoomGrid(currentRoom);
+
+        // 遍历所有家具，找出在这个家具上方叠加的家具
+        foreach (var kvp in placedFurnitureInfo)
+        {
+            foreach (var info in kvp.Value)
+            {
+                if (info.roomIndex != currentRoom) continue;
+
+                // 检查是否在同一个位置（叠加关系）
+                bool isChild = true;
+                // 检查子家具的所有占用格子是否都在主家具的占用格子范围内
+                foreach (var pos in info.occupiedCells)
+                {
+                    bool found = false;
+                    foreach (var parentPos in infoToMove.occupiedCells)
+                    {
+                        if (pos.x == parentPos.x && pos.y == parentPos.y)
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found)
+                    {
+                        isChild = false;
+                        break;
+                    }
+                }
+
+                // 如果是子家具且不是主家具本身
+                if (isChild && info != infoToMove)
+                {
+                    childrenToMove.Add(info);
+                }
+            }
+        }
+
+        // 按下时立即开始移动家具及其子家具
+        StartMovingFurnitureWithChildren(currentRoom, infoToMove, childrenToMove);
 
         OnFurniturePickupEvent?.Invoke(infoToMove.furnitureData, infoToMove.topLeftCell);
     }
 
     /// <summary>
-    /// 开始移动家具（从格子拾取）
+    /// 开始移动家具及其子家具（保持相对位置）
     /// </summary>
-    private void StartMovingFurniture(int roomIndex, FurniturePlacementInfo info)
+    private void StartMovingFurnitureWithChildren(int roomIndex, FurniturePlacementInfo mainInfo, List<FurniturePlacementInfo> childrenInfo)
     {
         if (isMovingFurniture) return;
 
         isMovingFurniture = true;
-        movingFurnitureInfo = info;
-        originalTopLeftCell = info.topLeftCell;
+        movingFurnitureInfo = mainInfo;
+        movingChildrenInfo = childrenInfo;
+        originalTopLeftCell = mainInfo.topLeftCell;
 
-        // 移除原家具图标
-        if (info.furnitureIcon != null)
+        // 移除主家具图标
+        if (mainInfo.furnitureIcon != null)
         {
-            Destroy(info.furnitureIcon);
+            Destroy(mainInfo.furnitureIcon);
         }
 
-        // 从字典中移除该实例（暂时）
-        placedFurnitureInfo[info.furnitureId].Remove(info);
-        if (placedFurnitureInfo[info.furnitureId].Count == 0)
+        // 从字典中移除主家具（暂时）
+        placedFurnitureInfo[mainInfo.furnitureId].Remove(mainInfo);
+        if (placedFurnitureInfo[mainInfo.furnitureId].Count == 0)
         {
-            placedFurnitureInfo.Remove(info.furnitureId);
+            placedFurnitureInfo.Remove(mainInfo.furnitureId);
         }
 
-        // 清除格子占用
+        // 清除主家具格子占用
         GridCellUI[,] grid = GetCurrentRoomGrid(roomIndex);
         if (grid != null)
         {
-            foreach (var pos in info.occupiedCells)
+            foreach (var pos in mainInfo.occupiedCells)
             {
                 if (pos.x >= 0 && pos.x < columns && pos.y >= 0 && pos.y < rows)
                 {
                     GridCellUI cell = grid[pos.x, pos.y];
                     if (cell != null)
                     {
-                        cell.RemoveFurniture(info.originalGridTypes[pos]);
+                        cell.RemoveFurniture(mainInfo.originalGridTypes[pos], mainInfo.furnitureId + "_" + mainInfo.instanceId);
                     }
                 }
             }
         }
 
-        Debug.Log($"开始移动家具: {info.furnitureData.name} (实例 {info.instanceId})");
+        // 移除所有子家具图标并清除占用
+        foreach (var childInfo in childrenInfo)
+        {
+            if (childInfo.furnitureIcon != null)
+            {
+                Destroy(childInfo.furnitureIcon);
+            }
+
+            placedFurnitureInfo[childInfo.furnitureId].Remove(childInfo);
+            if (placedFurnitureInfo[childInfo.furnitureId].Count == 0)
+            {
+                placedFurnitureInfo.Remove(childInfo.furnitureId);
+            }
+
+            foreach (var pos in childInfo.occupiedCells)
+            {
+                if (pos.x >= 0 && pos.x < columns && pos.y >= 0 && pos.y < rows)
+                {
+                    GridCellUI cell = grid[pos.x, pos.y];
+                    if (cell != null)
+                    {
+                        cell.RemoveFurniture(childInfo.originalGridTypes[pos], childInfo.furnitureId + "_" + childInfo.instanceId);
+                    }
+                }
+            }
+        }
+
+        Debug.Log($"开始移动家具组: 主家具 {mainInfo.furnitureData.name} (实例 {mainInfo.instanceId})，包含 {childrenInfo.Count} 个子家具，将保持相对位置");
     }
 
     /// <summary>
-    /// 尝试完成移动家具（松手时调用）
+    /// 放置包含子家具的完整家具组（保持相对位置）
     /// </summary>
-    public bool TryFinishMovingFurniture(int roomIndex, Vector2Int targetCell)
+    private void PlaceFurnitureWithChildren(int roomIndex, FurniturePlacementInfo mainInfo, List<FurniturePlacementInfo> childrenInfo, Vector2Int targetCell)
     {
-        if (!isMovingFurniture || movingFurnitureInfo == null) return false;
-
-        HomeSystemController homeSystem = FindObjectOfType<HomeSystemController>();
-        bool isEditMode = homeSystem?.IsEditMode() ?? false;
-
-        if (!isEditMode)
-        {
-            CancelMovingFurniture();
-            return false;
-        }
-
-        // 检查新位置是否可放置
-        if (!CanPlaceFurniture(roomIndex, movingFurnitureInfo.furnitureData, targetCell))
-        {
-            Debug.Log("新位置不可放置，取消移动");
-            CancelMovingFurniture();
-            return false;
-        }
-
-        // 在新位置放置家具
         GridCellUI[,] grid = GetCurrentRoomGrid(roomIndex);
-        if (grid == null) return false;
+        if (grid == null) return;
+
+        // 计算偏移量（相对于主家具的原始位置）
+        Vector2Int offset = targetCell - mainInfo.topLeftCell;
+
+        // 放置主家具
+        PlaceFurnitureInternal(roomIndex, mainInfo, targetCell);
+
+        // 放置所有子家具（保持相对位置）
+        foreach (var childInfo in childrenInfo)
+        {
+            Vector2Int childTarget = childInfo.topLeftCell + offset;
+            PlaceFurnitureInternal(roomIndex, childInfo, childTarget);
+        }
+
+        Debug.Log($"放置家具组完成: 主家具 {mainInfo.furnitureData.name} 在 {targetCell}，子家具保持相对位置偏移 {offset}");
+    }
+
+    /// <summary>
+    /// 内部方法：放置单个家具（不检查可放置性）
+    /// </summary>
+    private void PlaceFurnitureInternal(int roomIndex, FurniturePlacementInfo info, Vector2Int targetCell)
+    {
+        GridCellUI[,] grid = GetCurrentRoomGrid(roomIndex);
+        if (grid == null) return;
 
         List<Vector2Int> newOccupiedCells = new List<Vector2Int>();
         Dictionary<Vector2Int, GridType> newOriginalGridTypes = new Dictionary<Vector2Int, GridType>();
 
-        for (int x = 0; x < movingFurnitureInfo.furnitureData.width; x++)
+        // 检查是否是叠加放置
+        bool isStack = grid[targetCell.x, targetCell.y].IsOccupied;
+
+        for (int x = 0; x < info.furnitureData.width; x++)
         {
-            for (int y = 0; y < movingFurnitureInfo.furnitureData.height; y++)
+            for (int y = 0; y < info.furnitureData.height; y++)
             {
                 int placeX = targetCell.x + x;
                 int placeY = targetCell.y + y;
@@ -557,14 +738,15 @@ public class GridSystemManager : MonoBehaviour
                         Vector2Int pos = new Vector2Int(placeX, placeY);
                         newOriginalGridTypes[pos] = cell.GetOriginalGridType();
 
-                        if (movingFurnitureInfo.furnitureData.providesNewGrids)
+                        if (info.furnitureData.providesNewGrids)
                         {
-                            cell.PlaceFurniture(movingFurnitureInfo.furnitureData.id + "_" + movingFurnitureInfo.instanceId,
-                                true, movingFurnitureInfo.furnitureData.providedGridType);
+                            cell.PlaceFurniture(info.furnitureData.id + "_" + info.instanceId,
+                                true, info.furnitureData.providedGridType, isStack);
                         }
                         else
                         {
-                            cell.PlaceFurniture(movingFurnitureInfo.furnitureData.id + "_" + movingFurnitureInfo.instanceId, false);
+                            cell.PlaceFurniture(info.furnitureData.id + "_" + info.instanceId,
+                                false, GridType.Forbidden, isStack);
                         }
 
                         newOccupiedCells.Add(new Vector2Int(placeX, placeY));
@@ -574,32 +756,24 @@ public class GridSystemManager : MonoBehaviour
         }
 
         // 创建新图标
-        GameObject newIcon = CreateFurnitureIcon(roomIndex, movingFurnitureInfo.furnitureData, targetCell, movingFurnitureInfo.instanceId);
+        GameObject newIcon = CreateFurnitureIcon(roomIndex, info.furnitureData, targetCell, info.instanceId, isStack);
 
         // 更新家具信息
-        movingFurnitureInfo.topLeftCell = targetCell;
-        movingFurnitureInfo.occupiedCells = newOccupiedCells;
-        movingFurnitureInfo.originalGridTypes = newOriginalGridTypes;
-        movingFurnitureInfo.furnitureIcon = newIcon;
+        info.topLeftCell = targetCell;
+        info.occupiedCells = newOccupiedCells;
+        info.originalGridTypes = newOriginalGridTypes;
+        info.furnitureIcon = newIcon;
 
         // 重新添加到字典
-        if (!placedFurnitureInfo.ContainsKey(movingFurnitureInfo.furnitureId))
+        if (!placedFurnitureInfo.ContainsKey(info.furnitureId))
         {
-            placedFurnitureInfo[movingFurnitureInfo.furnitureId] = new List<FurniturePlacementInfo>();
+            placedFurnitureInfo[info.furnitureId] = new List<FurniturePlacementInfo>();
         }
-        placedFurnitureInfo[movingFurnitureInfo.furnitureId].Add(movingFurnitureInfo);
-
-        Debug.Log($"完成移动家具: {movingFurnitureInfo.furnitureData.name} 到位置 {targetCell}");
-
-        // 重置移动状态
-        isMovingFurniture = false;
-        movingFurnitureInfo = null;
-
-        return true;
+        placedFurnitureInfo[info.furnitureId].Add(info);
     }
 
     /// <summary>
-    /// 取消移动家具（可选项：是否删除）
+    /// 取消移动家具（可选项：是否删除）- 恢复家具组到原始位置
     /// </summary>
     public void CancelMovingFurniture(bool delete = false)
     {
@@ -607,24 +781,25 @@ public class GridSystemManager : MonoBehaviour
 
         if (!delete)
         {
-            // 恢复原家具
+            // 恢复原家具组到原始位置
             HomeSystemController homeSystem = FindObjectOfType<HomeSystemController>();
             int currentRoom = homeSystem?.GetCurrentRoomIndex() ?? 0;
 
-            // 重新放置到原位置
-            PlaceFurniture(currentRoom, movingFurnitureInfo.furnitureData, originalTopLeftCell);
+            // 重新放置主家具和所有子家具到原始位置
+            PlaceFurnitureWithChildren(currentRoom, movingFurnitureInfo, movingChildrenInfo, originalTopLeftCell);
 
-            Debug.Log($"取消移动家具: {movingFurnitureInfo.furnitureData.name}，回到原位");
+            Debug.Log($"取消移动家具组: 主家具 {movingFurnitureInfo.furnitureData.name}，回到原位，保持相对位置");
         }
         else
         {
-            Debug.Log($"删除家具: {movingFurnitureInfo.furnitureData.name}");
+            Debug.Log($"删除家具组: 主家具 {movingFurnitureInfo.furnitureData.name}");
             // 不需要恢复，直接丢弃
         }
 
         // 重置移动状态
         isMovingFurniture = false;
         movingFurnitureInfo = null;
+        movingChildrenInfo = null;
     }
 
     /// <summary>
@@ -660,6 +835,9 @@ public class GridSystemManager : MonoBehaviour
         List<Vector2Int> occupiedCells = new List<Vector2Int>();
         Dictionary<Vector2Int, GridType> originalGridTypes = new Dictionary<Vector2Int, GridType>();
 
+        // 检查是否是叠加放置
+        bool isStack = grid[targetCell.x, targetCell.y].IsOccupied;
+
         for (int x = 0; x < furniture.width; x++)
         {
             for (int y = 0; y < furniture.height; y++)
@@ -677,11 +855,11 @@ public class GridSystemManager : MonoBehaviour
 
                         if (furniture.providesNewGrids)
                         {
-                            cell.PlaceFurniture(furniture.id + "_" + instanceId, true, furniture.providedGridType);
+                            cell.PlaceFurniture(furniture.id + "_" + instanceId, true, furniture.providedGridType, isStack);
                         }
                         else
                         {
-                            cell.PlaceFurniture(furniture.id + "_" + instanceId, false);
+                            cell.PlaceFurniture(furniture.id + "_" + instanceId, false, GridType.Forbidden, isStack);
                         }
 
                         occupiedCells.Add(new Vector2Int(placeX, placeY));
@@ -690,7 +868,7 @@ public class GridSystemManager : MonoBehaviour
             }
         }
 
-        GameObject newIcon = CreateFurnitureIcon(roomIndex, furniture, targetCell, instanceId);
+        GameObject newIcon = CreateFurnitureIcon(roomIndex, furniture, targetCell, instanceId, isStack);
 
         FurniturePlacementInfo placementInfo = new FurniturePlacementInfo
         {
@@ -710,7 +888,7 @@ public class GridSystemManager : MonoBehaviour
         }
         placedFurnitureInfo[furniture.id].Add(placementInfo);
 
-        Debug.Log($"从持有家具栏放置成功: {furniture.name} (实例 {instanceId}) 在位置 {targetCell}");
+        Debug.Log($"从持有家具栏放置成功: {furniture.name} (实例 {instanceId}) 在位置 {targetCell} (叠加: {isStack})");
 
         return true;
     }
@@ -781,6 +959,9 @@ public class GridSystemManager : MonoBehaviour
 
         Dictionary<Vector2Int, GridType> originalGridTypes = new Dictionary<Vector2Int, GridType>();
 
+        // 检查是否是叠加放置
+        bool isStack = grid[topLeftCell.x, topLeftCell.y].IsOccupied;
+
         for (int x = 0; x < furniture.width; x++)
         {
             for (int y = 0; y < furniture.height; y++)
@@ -798,11 +979,11 @@ public class GridSystemManager : MonoBehaviour
 
                         if (furniture.providesNewGrids)
                         {
-                            cell.PlaceFurniture(furnitureId + "_" + instanceId, true, furniture.providedGridType);
+                            cell.PlaceFurniture(furnitureId + "_" + instanceId, true, furniture.providedGridType, isStack);
                         }
                         else
                         {
-                            cell.PlaceFurniture(furnitureId + "_" + instanceId, false);
+                            cell.PlaceFurniture(furnitureId + "_" + instanceId, false, GridType.Forbidden, isStack);
                         }
 
                         occupiedCells.Add(new Vector2Int(placeX, placeY));
@@ -811,7 +992,7 @@ public class GridSystemManager : MonoBehaviour
             }
         }
 
-        GameObject furnitureIcon = CreateFurnitureIcon(roomIndex, furniture, topLeftCell, instanceId);
+        GameObject furnitureIcon = CreateFurnitureIcon(roomIndex, furniture, topLeftCell, instanceId, isStack);
 
         FurniturePlacementInfo placementInfo = new FurniturePlacementInfo
         {
@@ -831,7 +1012,7 @@ public class GridSystemManager : MonoBehaviour
         }
         placedFurnitureInfo[furnitureId].Add(placementInfo);
 
-        Debug.Log($"放置家具成功: {furniture.name} (实例 {instanceId}) 在房间 {roomIndex} 位置 {topLeftCell}");
+        Debug.Log($"放置家具成功: {furniture.name} (实例 {instanceId}) 在房间 {roomIndex} 位置 {topLeftCell} (叠加: {isStack})");
         return true;
     }
 
@@ -880,7 +1061,7 @@ public class GridSystemManager : MonoBehaviour
                 if (cell != null)
                 {
                     GridType originalType = infoToRemove.originalGridTypes[pos];
-                    cell.RemoveFurniture(originalType);
+                    cell.RemoveFurniture(originalType, infoToRemove.furnitureId + "_" + infoToRemove.instanceId);
                 }
             }
         }

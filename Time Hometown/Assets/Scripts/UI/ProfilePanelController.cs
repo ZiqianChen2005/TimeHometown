@@ -19,17 +19,20 @@ public class ProfilePanelController : MonoBehaviour
 
     [Header("退出登录")]
     [SerializeField] private Button logoutButton;
-
     // 默认用户数据
     private string currentUserName = "时光旅人";
     private string currentSignature = "自律让我更自由！";
 
     private bool isInitialized = false;
 
+    // 用户名变更事件
+    public event System.Action<string> OnUserNameChanged;
+
     void Start()
     {
         InitializeProfileInfo();
         InitializeVolumeControls();
+        InitializeLogoutButton();
         LoadUserData();
     }
 
@@ -48,6 +51,9 @@ public class ProfilePanelController : MonoBehaviour
         {
             editUserNameButton.onClick.RemoveAllListeners();
             editUserNameButton.onClick.AddListener(OnEditUserNameClicked);
+
+            // 添加悬停效果
+            SetupButtonHoverEffect(editUserNameButton, Color.white, new Color(0.9f, 0.9f, 0.9f, 1f));
         }
 
         // 个性签名编辑按钮
@@ -56,6 +62,8 @@ public class ProfilePanelController : MonoBehaviour
             editSignatureButton.onClick.RemoveAllListeners();
             editSignatureButton.onClick.AddListener(OnEditSignatureClicked);
 
+            // 添加悬停效果
+            SetupButtonHoverEffect(editSignatureButton, Color.white, new Color(0.9f, 0.9f, 0.9f, 1f));
         }
 
         Debug.Log("用户信息显示初始化完成");
@@ -69,13 +77,6 @@ public class ProfilePanelController : MonoBehaviour
         // 从PlayerPrefs加载保存的用户数据
         currentUserName = PlayerPrefs.GetString("User_Name", "时光旅人");
         currentSignature = PlayerPrefs.GetString("User_Signature", "自律让我更自由！");
-
-        // 从GameDataManager获取金币数据用于显示（如果需要）
-        if (GameDataManager.Instance != null)
-        {
-            // 可以在个人信息中显示金币统计
-            Debug.Log($"当前金币: {GameDataManager.Instance.GetCoins()}");
-        }
 
         // 更新UI显示
         UpdateProfileDisplay();
@@ -93,6 +94,9 @@ public class ProfilePanelController : MonoBehaviour
         PlayerPrefs.Save();
 
         Debug.Log($"保存用户数据: 用户名={currentUserName}, 签名={currentSignature}");
+
+        // 触发用户名变更事件，通知UIManager更新顶部栏
+        OnUserNameChanged?.Invoke(currentUserName);
     }
 
     /// <summary>
@@ -277,6 +281,42 @@ public class ProfilePanelController : MonoBehaviour
     }
 
     /// <summary>
+    /// 初始化退出登录按钮
+    /// </summary>
+    private void InitializeLogoutButton()
+    {
+        if (logoutButton != null)
+        {
+            // 添加事件监听
+            logoutButton.onClick.RemoveAllListeners();
+            logoutButton.onClick.AddListener(OnLogoutButtonClicked);
+        }
+        else
+        {
+            Debug.LogWarning("未找到退出登录按钮，请检查UI配置");
+        }
+    }
+
+    /// <summary>
+    /// 设置按钮悬停效果
+    /// </summary>
+    private void SetupButtonHoverEffect(Button button, Color normalColor, Color hoverColor)
+    {
+        if (button == null) return;
+
+        // 添加悬停效果组件
+        ButtonHoverEffect hoverEffect = button.gameObject.GetComponent<ButtonHoverEffect>();
+        if (hoverEffect == null)
+        {
+            hoverEffect = button.gameObject.AddComponent<ButtonHoverEffect>();
+        }
+
+        hoverEffect.normalColor = normalColor;
+        hoverEffect.hoverColor = hoverColor;
+        hoverEffect.transitionDuration = 0.2f;
+    }
+
+    /// <summary>
     /// 退出登录按钮点击事件
     /// </summary>
     private void OnLogoutButtonClicked()
@@ -304,7 +344,7 @@ public class ProfilePanelController : MonoBehaviour
         if (UIManager.Instance != null)
         {
             // 调用快速版本
-            UIManager.Instance.Logout();
+            UIManager.Instance.LogoutImmediate();
         }
         else
         {

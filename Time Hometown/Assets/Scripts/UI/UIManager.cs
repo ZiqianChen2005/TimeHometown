@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
+using System; // 添加这个命名空间以使用 DateTime
 
 public class UIManager : MonoBehaviour
 {
@@ -22,6 +23,10 @@ public class UIManager : MonoBehaviour
 
     [Header("个人设置")]
     [SerializeField] private ProfilePanelController profilePanelController;
+
+    [Header("主界面顶部信息")]
+    [SerializeField] private Text userNameText;           // 用户名显示
+    [SerializeField] private Text continuousDaysText;     // 连续自律天数显示
 
     [Header("经验条系统")]
     [SerializeField] private GameObject expBarContainer;
@@ -60,6 +65,11 @@ public class UIManager : MonoBehaviour
     private Coroutine coinAnimationCoroutine;
     private Queue<int> pendingCoinQueue = new Queue<int>();
 
+    // 用户数据
+    private string userName = "时光旅人";
+    private int continuousDays = 1;        // 连续自律天数
+    private DateTime lastLoginDate;         // 上次登录日期
+
     private void Awake()
     {
         if (Instance == null)
@@ -69,6 +79,7 @@ public class UIManager : MonoBehaviour
 
         InitializeUI();
         SetupEventListeners();
+        LoadUserData();
     }
 
     private void Start()
@@ -88,6 +99,15 @@ public class UIManager : MonoBehaviour
 
         // 初始化UI显示
         InitializeUIData();
+
+        // 更新用户信息显示
+        UpdateUserInfoDisplay();
+    }
+
+    private void Update()
+    {
+        LoadUserData();
+        UpdateUserInfoDisplay();
     }
 
     private void OnDestroy()
@@ -101,6 +121,191 @@ public class UIManager : MonoBehaviour
 
         // 取消订阅数据事件
         UnsubscribeFromDataEvents();
+    }
+
+    /// <summary>
+    /// 快速登出（立即隐藏主界面，不带动画）
+    /// </summary>
+    public void LogoutImmediate()
+    {
+        Debug.Log("快速登出");
+
+        // 立即隐藏主界面
+        if (mainContainer != null)
+        {
+            if (mainCanvasGroup != null)
+            {
+                mainCanvasGroup.alpha = 0;
+                mainCanvasGroup.interactable = false;
+                mainCanvasGroup.blocksRaycasts = false;
+            }
+            mainContainer.SetActive(false);
+        }
+
+        // 立即显示登录界面
+        if (loginContainer != null)
+        {
+            loginContainer.SetActive(true);
+            if (loginCanvasGroup != null)
+            {
+                loginCanvasGroup.alpha = 1;
+                loginCanvasGroup.interactable = true;
+                loginCanvasGroup.blocksRaycasts = true;
+            }
+        }
+
+        // 重置登录表单
+        ResetLoginForm();
+
+        // 移动相机
+        CameraController.Instance.MoveToLoginView();
+
+        Debug.Log("快速退出登录完成");
+    }
+
+    /// <summary>
+    /// 重置登录表单
+    /// </summary>
+    private void ResetLoginForm()
+    {
+        // 如果有用户名和密码输入框，在这里重置
+        // 根据你的实际UI来添加
+    }
+
+    /// <summary>
+    /// 加载用户数据
+    /// </summary>
+    private void LoadUserData()
+    {
+        // 加载用户名
+        userName = PlayerPrefs.GetString("User_Name", "时光旅人");
+
+        // 加载上次登录日期
+        string lastLoginStr = PlayerPrefs.GetString("LastLoginDate", "");
+        if (!string.IsNullOrEmpty(lastLoginStr))
+        {
+            if (DateTime.TryParse(lastLoginStr, out lastLoginDate))
+            {
+            }
+            else
+            {
+                lastLoginDate = DateTime.Today.AddDays(-1); // 解析失败，默认昨天
+            }
+        }
+        else
+        {
+            lastLoginDate = DateTime.Today.AddDays(-1); // 首次登录，默认昨天
+        }
+
+        // 加载连续天数
+        continuousDays = PlayerPrefs.GetInt("ContinuousDays", 1);
+
+    }
+
+    /// <summary>
+    /// 保存用户数据
+    /// </summary>
+    private void SaveUserData()
+    {
+        PlayerPrefs.SetString("User_Name", userName);
+        PlayerPrefs.SetString("LastLoginDate", DateTime.Today.ToString("yyyy-MM-dd"));
+        PlayerPrefs.SetInt("ContinuousDays", continuousDays);
+        PlayerPrefs.Save();
+
+    }
+
+    /// <summary>
+    /// 更新用户信息显示
+    /// </summary>
+    private void UpdateUserInfoDisplay()
+    {
+        if (userNameText != null)
+        {
+            userNameText.text = userName;
+        }
+
+        if (continuousDaysText != null)
+        {
+            continuousDaysText.text = $"{continuousDays}";
+        }
+    }
+
+    /// <summary>
+    /// 计算并更新连续天数（登录时调用）
+    /// </summary>
+    public void UpdateContinuousDays()
+    {
+        DateTime today = DateTime.Today;
+        TimeSpan diff = today - lastLoginDate;
+
+        Debug.Log($"计算连续天数: 今天={today:yyyy-MM-dd}, 上次={lastLoginDate:yyyy-MM-dd}, 相差{diff.Days}天");
+
+        if (diff.Days == 0)
+        {
+            // 同一天多次登录，不加天数
+            Debug.Log("同一天多次登录，连续天数不变");
+        }
+        else if (diff.Days == 1)
+        {
+            // 正好差一天，连续天数+1
+            continuousDays++;
+            Debug.Log($"连续登录，连续天数+1，当前: {continuousDays}");
+        }
+        else if (diff.Days > 1)
+        {
+            // 差一天以上，重置为1
+            continuousDays = 1;
+            Debug.Log($"登录中断，重置连续天数为1");
+        }
+
+        // 更新显示
+        UpdateUserInfoDisplay();
+
+        // 保存数据
+        SaveUserData();
+    }
+
+    /// <summary>
+    /// 获取当前用户名
+    /// </summary>
+    public string GetUserName()
+    {
+        return userName;
+    }
+
+    /// <summary>
+    /// 设置用户名
+    /// </summary>
+    public void SetUserName(string newName)
+    {
+        if (!string.IsNullOrWhiteSpace(newName))
+        {
+            userName = newName.Trim();
+            SaveUserData();
+            UpdateUserInfoDisplay();
+
+            // 如果个人设置面板存在，也更新它
+            if (profilePanelController != null)
+            {
+                profilePanelController.SetUserName(userName);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 获取连续自律天数
+    /// </summary>
+    public int GetContinuousDays()
+    {
+        return continuousDays;
+    }
+
+    /// <summary>
+    /// 获取上次登录日期
+    /// </summary>
+    public DateTime GetLastLoginDate()
+    {
+        return lastLoginDate;
     }
 
     /// <summary>
@@ -654,6 +859,10 @@ public class UIManager : MonoBehaviour
     public void OnLoginButtonClicked()
     {
         Debug.Log("登录按钮被点击");
+
+        // 登录时更新连续天数
+        UpdateContinuousDays();
+
         StartLoginTransition();
     }
 
@@ -845,5 +1054,40 @@ public class UIManager : MonoBehaviour
     public GameObject GetLoginContainer()
     {
         return loginContainer;
+    }
+
+    /// <summary>
+    /// 重置连续天数（测试用）
+    /// </summary>
+    [ContextMenu("重置连续天数")]
+    public void ResetContinuousDays()
+    {
+        continuousDays = 1;
+        lastLoginDate = DateTime.Today.AddDays(-1);
+        SaveUserData();
+        UpdateUserInfoDisplay();
+        Debug.Log("连续天数已重置为1");
+    }
+
+    /// <summary>
+    /// 模拟明天登录（测试用）
+    /// </summary>
+    [ContextMenu("模拟明天登录")]
+    public void SimulateNextDayLogin()
+    {
+        lastLoginDate = DateTime.Today.AddDays(-1);
+        SaveUserData();
+        Debug.Log("模拟明天登录：上次登录日期设为昨天");
+    }
+
+    /// <summary>
+    /// 模拟后天登录（测试用）
+    /// </summary>
+    [ContextMenu("模拟后天登录")]
+    public void SimulateTwoDaysLaterLogin()
+    {
+        lastLoginDate = DateTime.Today.AddDays(-2);
+        SaveUserData();
+        Debug.Log("模拟后天登录：上次登录日期设为前天");
     }
 }

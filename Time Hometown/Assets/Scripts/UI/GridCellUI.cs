@@ -30,6 +30,10 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
     private bool isSelectable = true;
     private bool isHighlighted = false;
 
+    // 叠加状态
+    [SerializeField] private bool canStack = true;              // 是否可以叠加放置（默认true）
+    [SerializeField] private List<string> stackedFurnitureIds = new List<string>(); // 叠加的家具ID列表
+
     // 状态
     private bool isSelected = false;
     private bool isValidPlacement = false;
@@ -81,6 +85,7 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         gridType = type;
         gridPosition = pos;
         isSelectable = selectable;
+        canStack = true; // 默认可叠加
 
         // 获取原始颜色（不带透明度）
         originalColor = GetBaseColor();
@@ -124,10 +129,27 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
     }
 
     /// <summary>
-    /// 放置家具 - 现在只标记占用，不创建图标
+    /// 放置家具 - 现在支持叠加
     /// </summary>
-    public void PlaceFurniture(string furnitureId, bool providesNewGrids = false, GridType newGridType = GridType.Forbidden)
+    public void PlaceFurniture(string furnitureId, bool providesNewGrids = false, GridType newGridType = GridType.Forbidden, bool isStack = false)
     {
+        // 如果是叠加放置，需要特殊处理
+        if (isStack)
+        {
+            if (!canStack)
+            {
+                Debug.LogWarning($"格子 {gridPosition} 不可叠加，无法放置家具 {furnitureId}");
+                return;
+            }
+
+            // 添加到叠加列表
+            stackedFurnitureIds.Add(furnitureId);
+            Debug.Log($"格子 {gridPosition} 叠加放置家具: {furnitureId}，当前叠加层数: {stackedFurnitureIds.Count}");
+
+            // 叠加放置不改变格子类型和占用状态
+            return;
+        }
+
         // 如果格子已被占用，先记录警告
         if (isOccupied)
         {
@@ -141,15 +163,17 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         // 根据家具是否提供新格子来更新格子类型
         if (providesNewGrids)
         {
-            // 家具提供新格子，更新为提供的类型
+            // 家具提供新格子，更新为提供的类型，并且保持可叠加
             gridType = newGridType;
-            Debug.Log($"格子 {gridPosition} 类型更新为: {gridType} (家具提供新格子)");
+            canStack = true; // 提供新格子的家具仍然可以叠加
+            Debug.Log($"格子 {gridPosition} 类型更新为: {gridType} (家具提供新格子)，可叠加: {canStack}");
         }
         else
         {
-            // 家具不提供格子，变为禁止格
+            // 家具不提供格子，变为禁止格，并且不可叠加
             gridType = GridType.Forbidden;
-            Debug.Log($"格子 {gridPosition} 类型更新为: Forbidden (家具不提供格子)");
+            canStack = false; // 不提供格子的家具不可叠加
+            Debug.Log($"格子 {gridPosition} 类型更新为: Forbidden (家具不提供格子)，不可叠加");
         }
 
         // 更新格子颜色
@@ -159,21 +183,60 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
     }
 
     /// <summary>
-    /// 移除家具
+    /// 移除家具 - 支持移除叠加的家具
     /// </summary>
-    public void RemoveFurniture(GridType originalGridType)
+    public void RemoveFurniture(GridType originalGridType, string furnitureId = null)
     {
-        if (!isOccupied)
+        // 如果有指定家具ID，尝试从叠加列表中移除
+        if (!string.IsNullOrEmpty(furnitureId))
         {
-            Debug.LogWarning($"格子 {gridPosition} 尝试移除家具，但未被占用");
-            return;
+            if (stackedFurnitureIds.Contains(furnitureId))
+            {
+                stackedFurnitureIds.Remove(furnitureId);
+                Debug.Log($"格子 {gridPosition} 移除叠加家具: {furnitureId}，剩余叠加层数: {stackedFurnitureIds.Count}");
+
+                // 如果还有叠加家具，不改变格子状态
+                if (stackedFurnitureIds.Count > 0)
+                    return;
+            }
+            else if (placedFurnitureId == furnitureId)
+            {
+                // 移除主家具
+                isOccupied = false;
+                placedFurnitureId = null;
+
+                // 恢复原始格子类型
+                gridType = originalGridType;
+                canStack = true; // 恢复可叠加
+
+                Debug.Log($"格子 {gridPosition} 移除主家具，恢复为原始类型: {gridType}");
+            }
+            else
+            {
+                Debug.LogWarning($"格子 {gridPosition} 尝试移除家具 {furnitureId}，但未找到");
+                return;
+            }
         }
+        else
+        {
+            // 没有指定ID，移除所有家具
+            if (!isOccupied && stackedFurnitureIds.Count == 0)
+            {
+                Debug.LogWarning($"格子 {gridPosition} 尝试移除家具，但未被占用");
+                return;
+            }
 
-        isOccupied = false;
-        placedFurnitureId = null;
+            // 清空叠加列表
+            stackedFurnitureIds.Clear();
 
-        // 恢复原始格子类型
-        gridType = originalGridType;
+            // 移除主家具
+            isOccupied = false;
+            placedFurnitureId = null;
+
+            // 恢复原始格子类型
+            gridType = originalGridType;
+            canStack = true; // 恢复可叠加
+        }
 
         // 更新格子颜色
         UpdateGridColor();
@@ -209,12 +272,19 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
             color.a = normalAlpha;
         }
 
-        // 如果格子被占用，稍微调暗
-        if (isOccupied)
+        // 如果格子被占用且不可叠加，稍微调暗
+        if (isOccupied && !canStack)
         {
             color.r *= 0.7f;
             color.g *= 0.7f;
             color.b *= 0.7f;
+        }
+        // 如果有叠加家具，稍微调亮
+        else if (stackedFurnitureIds.Count > 0)
+        {
+            color.r *= 1.2f;
+            color.g *= 1.2f;
+            color.b *= 1.2f;
         }
 
         backgroundImage.color = color;
@@ -274,10 +344,14 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         isPointerDown = true;
 
         // 如果格子有家具，触发家具拾取（准备移动）
-        if (isOccupied)
+        if (isOccupied || stackedFurnitureIds.Count > 0)
         {
-            GridSystemManager.Instance?.OnFurniturePickup(gridPosition, placedFurnitureId);
-            Debug.Log($"拾取家具: {placedFurnitureId} 在位置 {gridPosition}");
+            // 如果有叠加家具，优先拾取最上层的家具
+            string furnitureToPick = stackedFurnitureIds.Count > 0 ?
+                stackedFurnitureIds[stackedFurnitureIds.Count - 1] : placedFurnitureId;
+
+            GridSystemManager.Instance?.OnFurniturePickup(gridPosition, furnitureToPick);
+            Debug.Log($"拾取家具: {furnitureToPick} 在位置 {gridPosition}");
         }
     }
 
@@ -370,7 +444,7 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
     {
         if (!isSelectable) return;
 
-        Debug.Log($"点击格子: {gridPosition}, 类型: {gridType}, 已占用: {isOccupied}");
+        Debug.Log($"点击格子: {gridPosition}, 类型: {gridType}, 已占用: {isOccupied}, 叠加层数: {stackedFurnitureIds.Count}");
 
         // 触发格子点击事件
         GridSystemManager.Instance?.OnGridClicked(gridPosition, gridType, isOccupied, placedFurnitureId);
@@ -416,4 +490,7 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
     public bool IsOccupied => isOccupied;
     public string PlacedFurnitureId => placedFurnitureId;
     public bool IsSelectable => isSelectable;
+    public bool CanStack => canStack;
+    public int StackCount => stackedFurnitureIds.Count;
+    public List<string> StackedFurnitureIds => stackedFurnitureIds;
 }
