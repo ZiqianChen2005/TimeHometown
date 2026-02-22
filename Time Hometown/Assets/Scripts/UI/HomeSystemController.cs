@@ -18,8 +18,9 @@ public class HomeSystemController : MonoBehaviour
     [SerializeField] private Image rightButtonImage;            // 右按钮图片
 
     [Header("格子系统")]
-    [SerializeField] private Transform[] roomGridContainers;    // 每个房间的格子容器
-    [SerializeField] private GameObject gridCellPrefab;         // 格子预制体
+    [SerializeField] private Transform[] roomGridContainers;        // 每个房间的格子容器
+    [SerializeField] private Transform[] roomFurnitureContainers;   // 每个房间的家具容器
+    [SerializeField] private GameObject gridCellPrefab;             // 格子预制体
 
     [Header("编辑布局")]
     [SerializeField] private Button editLayoutButton;           // 编辑布局按钮
@@ -39,6 +40,10 @@ public class HomeSystemController : MonoBehaviour
     [Header("编辑按钮栏")]
     [SerializeField] private Transform buttonBarContainer;           // 按钮栏容器
     [SerializeField] private float buttonBarOffset = -600f;          // 按钮栏移动距离
+
+    [Header("垃圾桶")]
+    [SerializeField] public TrashCanController trashCan;           // 垃圾桶控制器
+    [SerializeField] public bool enableTrashCan = true;            // 是否启用垃圾桶
 
     [Header("动画设置")]
     [SerializeField] private float moveDuration = 0.3f;              // 移动动画持续时间
@@ -87,6 +92,9 @@ public class HomeSystemController : MonoBehaviour
         LoadOwnedFurniture();
         LoadRoomLayouts();
         PopulateOwnedFurniture();
+
+        // 初始化完成后设置可见性
+        SetRoomVisibility();
 
         if (testSaveButton != null)
         {
@@ -163,7 +171,100 @@ public class HomeSystemController : MonoBehaviour
         // 初始化编辑模式UI
         UpdateEditModeUI();
 
+        // 加载已保存的布局
+        LoadRoomLayouts();
+        // 应用已保存的布局到格子
+        ApplyRoomLayouts();
+
+        // 订阅家具拾取事件
+        if (GridSystemManager.Instance != null)
+        {
+            GridSystemManager.Instance.OnFurniturePickupEvent += OnFurniturePickup;
+        }
+
+        // 初始化垃圾桶
+        if (trashCan != null)
+        {
+            trashCan.OnFurnitureDropped += OnFurnitureDroppedToTrash;
+        }
+
         Debug.Log("家园系统初始化完成");
+    }
+
+    private void OnDestroy()
+    {
+        // 取消订阅
+        if (GridSystemManager.Instance != null)
+        {
+            GridSystemManager.Instance.OnFurniturePickupEvent -= OnFurniturePickup;
+        }
+
+        if (trashCan != null)
+        {
+            trashCan.OnFurnitureDropped -= OnFurnitureDroppedToTrash;
+        }
+    }
+
+    /// <summary>
+    /// 家具被丢入垃圾桶事件
+    /// </summary>
+    private void OnFurnitureDroppedToTrash()
+    {
+        Debug.Log("家具被丢入垃圾桶");
+
+        // 如果正在移动家具，取消移动并删除家具
+        if (GridSystemManager.Instance != null && GridSystemManager.Instance.IsMovingFurniture())
+        {
+            var movingInfo = GridSystemManager.Instance.GetMovingFurnitureInfo();
+            if (movingInfo != null)
+            {
+                // 从临时布局中移除
+                if (tempLayouts.ContainsKey(currentRoomIndex))
+                {
+                    tempLayouts[currentRoomIndex].RemoveAll(p => p.furnitureId == movingInfo.furnitureId);
+                }
+
+                // 取消移动（不恢复原位置，直接删除）
+                GridSystemManager.Instance.CancelMovingFurniture(true);
+
+                Debug.Log($"删除家具: {movingInfo.furnitureData.name}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 设置房间可见性（只显示当前房间）
+    /// </summary>
+    private void SetRoomVisibility()
+    {
+        if (roomViews != null)
+        {
+            for (int i = 0; i < roomViews.Length; i++)
+            {
+                if (roomViews[i] != null)
+                {
+                    roomViews[i].SetActive(i == currentRoomIndex);
+                }
+            }
+        }
+
+        for (int i = 0; i < roomGridContainers.Length; i++)
+        {
+            if (roomGridContainers[i] != null)
+            {
+                roomGridContainers[i].gameObject.SetActive(i == currentRoomIndex);
+            }
+        }
+
+        for (int i = 0; i < roomFurnitureContainers.Length; i++)
+        {
+            if (roomFurnitureContainers[i] != null)
+            {
+                roomFurnitureContainers[i].gameObject.SetActive(i == currentRoomIndex);
+            }
+        }
+
+        Debug.Log($"设置房间可见性: 显示房间 {currentRoomIndex}");
     }
 
     /// <summary>
@@ -182,17 +283,15 @@ public class HomeSystemController : MonoBehaviour
 
         if (ownedFurnitureGrid != null)
         {
-            // 设置网格布局参数
             ownedFurnitureGrid.cellSize = new Vector2(150, 150);
             ownedFurnitureGrid.spacing = new Vector2(80, 55);
-            ownedFurnitureGrid.padding = new RectOffset(0, 0, 0, 0);
+            ownedFurnitureGrid.padding = new RectOffset(40, 40, 0, 0);
             ownedFurnitureGrid.constraint = GridLayoutGroup.Constraint.FixedRowCount;
             ownedFurnitureGrid.constraintCount = 2;
 
             Debug.Log("持有家具网格布局初始化完成");
         }
 
-        // 确保Content有ContentSizeFitter
         if (ownedFurnitureContent != null)
         {
             ContentSizeFitter fitter = ownedFurnitureContent.GetComponent<ContentSizeFitter>();
@@ -200,8 +299,8 @@ public class HomeSystemController : MonoBehaviour
             {
                 fitter = ownedFurnitureContent.gameObject.AddComponent<ContentSizeFitter>();
             }
-            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            fitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
         }
     }
 
@@ -216,7 +315,6 @@ public class HomeSystemController : MonoBehaviour
             ownedFurnitureIds = new List<string>(ownedFurniture.Split(','));
         }
 
-        // 默认添加一些家具用于测试
         if (ownedFurnitureIds.Count == 0)
         {
             ownedFurnitureIds.Add("town_default_chair");
@@ -242,14 +340,12 @@ public class HomeSystemController : MonoBehaviour
         if (ownedFurnitureContent == null || ownedFurniturePrefab == null || FurnitureDatabase.Instance == null)
             return;
 
-        // 清空现有物品
         foreach (Transform child in ownedFurnitureContent)
         {
             Destroy(child.gameObject);
         }
         ownedFurnitureItems.Clear();
 
-        // 为每个持有家具创建可拖拽项
         foreach (string furnitureId in ownedFurnitureIds)
         {
             FurnitureData data = FurnitureDatabase.Instance.GetFurnitureById(furnitureId);
@@ -270,112 +366,211 @@ public class HomeSystemController : MonoBehaviour
         Debug.Log($"填充持有家具栏: {ownedFurnitureItems.Count}件");
     }
 
+    /// <summary>
+    /// 家具拖拽开始事件（从持有家具栏）
+    /// </summary>
     private void OnFurnitureDragStart(FurnitureData furniture, Vector2 position)
     {
         if (!isEditMode) return;
 
         Debug.Log($"家具拖拽开始: {furniture.name}");
 
-        // 设置当前选中的家具到GridSystemManager
         if (GridSystemManager.Instance != null)
         {
-            GridSystemManager.Instance.SetSelectedFurniture(furniture);
+            GridSystemManager.Instance.StartDraggingFromInventory(furniture);
         }
 
-        // 临时禁用ScrollRect的滚动
         if (ownedFurnitureScrollRect != null)
         {
             ownedFurnitureScrollRect.vertical = false;
             ownedFurnitureScrollRect.horizontal = false;
         }
 
-        // 移动持有家具栏和按钮栏
         StartCoroutine(MoveBars(true));
+
+        // 垃圾桶向上移动
+        if (trashCan != null && enableTrashCan)
+        {
+            trashCan.MoveUp();
+        }
     }
 
-
+    /// <summary>
+    /// 家具拖拽结束事件（从持有家具栏）
+    /// </summary>
     private void OnFurnitureDragEnd(FurnitureData furniture, Vector2 screenPosition)
     {
         if (!isEditMode) return;
 
         Debug.Log($"家具拖拽结束: {furniture.name}");
 
-        // 清除选中的家具
+        bool success = false;
+
+        // 检查是否在垃圾桶上松手
+        if (trashCan != null && enableTrashCan)
+        {
+            // 使用射线检测检查鼠标位置是否有垃圾桶
+            var pointerData = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current);
+            pointerData.position = screenPosition;
+
+            var results = new List<UnityEngine.EventSystems.RaycastResult>();
+            UnityEngine.EventSystems.EventSystem.current.RaycastAll(pointerData, results);
+
+            bool onTrashCan = false;
+            foreach (var result in results)
+            {
+                if (result.gameObject.GetComponent<TrashCanController>() != null)
+                {
+                    onTrashCan = true;
+                    break;
+                }
+            }
+
+            if (onTrashCan)
+            {
+                // 触碰到垃圾桶，执行删除
+                trashCan.DeleteFurniture();
+                Debug.Log($"家具 {furniture.name} 被丢入垃圾桶");
+
+                // 清理选中状态
+                if (GridSystemManager.Instance != null)
+                {
+                    GridSystemManager.Instance.SetSelectedFurniture(null);
+                }
+
+                StartCoroutine(MoveBars(false));
+
+                // 垃圾桶向下移动
+                if (trashCan != null)
+                {
+                    trashCan.MoveDown();
+                }
+
+                return;
+            }
+        }
+
+        // 否则尝试放置到格子
+        GridCellUI targetCell = FindGridCellAtPosition(screenPosition);
+
+        if (targetCell != null)
+        {
+            Vector2Int gridPos = targetCell.GridPosition;
+
+            success = GridSystemManager.Instance?.TryPlaceFromInventory(currentRoomIndex, furniture, gridPos) ?? false;
+
+            if (success)
+            {
+                AddToTempLayout(furniture, gridPos);
+                Debug.Log($"家具放置成功: {furniture.name} 在位置 {gridPos}");
+                if (AudioManager.Instance != null)
+                    AudioManager.Instance.PlaySuccessSound();
+            }
+            else
+            {
+                Debug.Log($"家具放置失败: {furniture.name}");
+                if (AudioManager.Instance != null)
+                    AudioManager.Instance.PlayErrorSound();
+            }
+        }
+        else
+        {
+            Debug.Log($"未找到目标格子，家具放置失败: {furniture.name}");
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.PlayErrorSound();
+        }
+
         if (GridSystemManager.Instance != null)
         {
             GridSystemManager.Instance.SetSelectedFurniture(null);
         }
 
-        // 检查是否放置在格子上
-        bool placed = TryPlaceFurniture(furniture, screenPosition);
-
-        if (placed)
-        {
-            Debug.Log($"家具放置成功: {furniture.name}");
-        }
-        else
-        {
-            Debug.Log($"家具放置失败: {furniture.name}");
-        }
-
-        // 移动持有家具栏和按钮栏回原位
         StartCoroutine(MoveBars(false));
+
+        // 垃圾桶向下移动
+        if (trashCan != null && enableTrashCan)
+        {
+            trashCan.MoveDown();
+        }
     }
 
     /// <summary>
-    /// 尝试放置家具
+    /// 家具拾取事件（从格子拾取）- 订阅自GridSystemManager
     /// </summary>
-    private bool TryPlaceFurniture(FurnitureData furniture, Vector2 screenPosition)
+    private void OnFurniturePickup(FurnitureData furniture, Vector2Int position)
     {
-        // 查找屏幕位置对应的格子
-        GridCellUI targetCell = FindGridCellAtPosition(screenPosition);
+        if (!isEditMode) return;
 
-        if (targetCell == null)
+        Debug.Log($"家具拾取开始: {furniture.name} 从位置 {position}");
+
+        if (ownedFurnitureScrollRect != null)
         {
-            Debug.LogWarning($"未找到目标格子，屏幕位置: {screenPosition}");
-            return false;
+            ownedFurnitureScrollRect.vertical = false;
+            ownedFurnitureScrollRect.horizontal = false;
         }
 
-        Vector2Int gridPos = targetCell.GridPosition;
+        StartCoroutine(MoveBars(true));
 
-        Debug.Log($"找到目标格子: ({gridPos.x}, {gridPos.y}), 类型: {targetCell.GridType}");
-
-        // 检查是否可放置
-        if (GridSystemManager.Instance != null)
+        // 垃圾桶向上移动
+        if (trashCan != null && enableTrashCan)
         {
-            // 使用当前鼠标位置作为基准格（左上角）
-            bool canPlace = GridSystemManager.Instance.CanPlaceFurniture(currentRoomIndex, furniture, gridPos);
+            trashCan.MoveUp();
+        }
+    }
 
-            if (canPlace)
+    /// <summary>
+    /// 复位UI栏
+    /// </summary>
+    public void ResetUIBars()
+    {
+        if (isEditMode)
+        {
+            StartCoroutine(MoveBars(false));
+
+            if (ownedFurnitureScrollRect != null)
             {
-                // 添加到临时布局
-                AddToTempLayout(furniture, gridPos);
-
-                // 立即在格子上放置家具
-                bool placed = GridSystemManager.Instance.PlaceFurniture(currentRoomIndex, furniture, gridPos);
-
-                if (placed)
-                {
-                    Debug.Log($"家具放置成功: {furniture.name} 在位置 ({gridPos.x}, {gridPos.y})");
-
-                    // 播放放置成功音效
-                    if (AudioManager.Instance != null)
-                        AudioManager.Instance.PlaySuccessSound();
-
-                    return true;
-                }
+                ownedFurnitureScrollRect.vertical = false;
+                ownedFurnitureScrollRect.horizontal = true;
             }
-            else
-            {
-                Debug.Log($"家具放置失败: {furniture.name} 在位置 ({gridPos.x}, {gridPos.y}) - 位置不可用");
 
-                // 播放放置失败音效
-                if (AudioManager.Instance != null)
-                    AudioManager.Instance.PlayErrorSound();
+            // 垃圾桶向下移动
+            if (trashCan != null && enableTrashCan)
+            {
+                trashCan.MoveDown();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 查找屏幕位置对应的格子
+    /// </summary>
+    public GridCellUI FindGridCellAtPosition(Vector2 screenPosition)
+    {
+        var pointerData = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current);
+        pointerData.position = screenPosition;
+
+        var results = new List<UnityEngine.EventSystems.RaycastResult>();
+        UnityEngine.EventSystems.EventSystem.current.RaycastAll(pointerData, results);
+
+        foreach (var result in results)
+        {
+            GridCellUI cell = result.gameObject.GetComponent<GridCellUI>();
+            if (cell != null)
+            {
+                return cell;
             }
         }
 
-        return false;
+        foreach (var result in results)
+        {
+            GridCellUI cell = result.gameObject.GetComponentInParent<GridCellUI>();
+            if (cell != null)
+            {
+                return cell;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -388,7 +583,6 @@ public class HomeSystemController : MonoBehaviour
             tempLayouts[currentRoomIndex] = new List<FurniturePlacementData>();
         }
 
-        // 创建放置数据
         FurniturePlacementData placement = new FurniturePlacementData
         {
             furnitureId = furniture.id,
@@ -397,7 +591,6 @@ public class HomeSystemController : MonoBehaviour
             roomType = currentRoomIndex
         };
 
-        // 检查是否已存在相同位置的家具（防止重复放置）
         bool exists = false;
         foreach (var existing in tempLayouts[currentRoomIndex])
         {
@@ -417,44 +610,6 @@ public class HomeSystemController : MonoBehaviour
     }
 
     /// <summary>
-    /// 查找屏幕位置对应的格子 - 优化版本
-    /// </summary>
-    private GridCellUI FindGridCellAtPosition(Vector2 screenPosition)
-    {
-        // 使用射线检测查找格子
-        var pointerData = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current);
-        pointerData.position = screenPosition;
-
-        var results = new List<UnityEngine.EventSystems.RaycastResult>();
-        UnityEngine.EventSystems.EventSystem.current.RaycastAll(pointerData, results);
-
-        // 优先查找GridCellUI组件
-        foreach (var result in results)
-        {
-            GridCellUI cell = result.gameObject.GetComponent<GridCellUI>();
-            if (cell != null)
-            {
-                Debug.Log($"找到格子: {cell.name}, 位置: {cell.GridPosition}");
-                return cell;
-            }
-        }
-
-        // 如果没有直接找到，尝试查找父对象上的GridCellUI
-        foreach (var result in results)
-        {
-            GridCellUI cell = result.gameObject.GetComponentInParent<GridCellUI>();
-            if (cell != null)
-            {
-                Debug.Log($"在父对象找到格子: {cell.name}, 位置: {cell.GridPosition}");
-                return cell;
-            }
-        }
-
-        Debug.LogWarning($"未找到任何格子，检测到 {results.Count} 个对象");
-        return null;
-    }
-
-    /// <summary>
     /// 移动持有家具栏和按钮栏
     /// </summary>
     private IEnumerator MoveBars(bool moveOut)
@@ -463,13 +618,11 @@ public class HomeSystemController : MonoBehaviour
 
         isBarMoving = true;
 
-        // 获取RectTransform
         RectTransform furnitureRect = ownedFurnitureRect;
         RectTransform buttonRect = buttonBarContainer?.GetComponent<RectTransform>();
 
         if (furnitureRect == null || buttonRect == null) yield break;
 
-        // 计算目标位置
         Vector2 furnitureTarget = moveOut ?
             ownedFurnitureOriginalPos + new Vector2(0, furnitureBarOffset) :
             ownedFurnitureOriginalPos;
@@ -498,11 +651,10 @@ public class HomeSystemController : MonoBehaviour
         furnitureRect.anchoredPosition = furnitureTarget;
         buttonRect.anchoredPosition = buttonTarget;
 
-        // 移动完成后重新启用ScrollRect的滚动
         if (!moveOut && ownedFurnitureScrollRect != null)
         {
-            ownedFurnitureScrollRect.vertical = true;
-            ownedFurnitureScrollRect.horizontal = false;
+            ownedFurnitureScrollRect.vertical = false;
+            ownedFurnitureScrollRect.horizontal = true;
         }
 
         isBarMoving = false;
@@ -518,7 +670,6 @@ public class HomeSystemController : MonoBehaviour
         {
             try
             {
-                // 使用更宽松的 JSON 解析
                 var wrapper = JsonUtility.FromJson<RoomLayoutData>(json);
                 if (wrapper != null && wrapper.rooms != null)
                 {
@@ -549,7 +700,6 @@ public class HomeSystemController : MonoBehaviour
             catch (System.Exception e)
             {
                 Debug.LogError($"加载布局失败: {e.Message}\nJSON内容: {json}");
-                // 如果加载失败，清空数据
                 roomLayouts.Clear();
                 PlayerPrefs.DeleteKey("RoomLayouts");
             }
@@ -559,18 +709,46 @@ public class HomeSystemController : MonoBehaviour
             Debug.Log("没有找到已保存的房间布局");
         }
 
-        // 初始化临时布局
         tempLayouts.Clear();
     }
 
     /// <summary>
-    /// 保存布局到JSON - 修复序列化问题
+    /// 应用已保存的布局到格子
+    /// </summary>
+    private void ApplyRoomLayouts()
+    {
+        if (GridSystemManager.Instance == null) return;
+
+        for (int i = 0; i < roomGridContainers.Length; i++)
+        {
+            GridSystemManager.Instance.RemoveAllFurnitureInRoom(i);
+        }
+
+        foreach (var kvp in roomLayouts)
+        {
+            int roomIndex = kvp.Key;
+            foreach (var placement in kvp.Value)
+            {
+                FurnitureData furniture = FurnitureDatabase.Instance?.GetFurnitureById(placement.furnitureId);
+                if (furniture != null)
+                {
+                    Vector2Int gridPos = new Vector2Int(placement.gridX, placement.gridY);
+                    GridSystemManager.Instance.PlaceFurniture(roomIndex, furniture, gridPos);
+                    Debug.Log($"应用家具: {furniture.name} 在房间 {roomIndex} 位置 ({gridPos.x}, {gridPos.y})");
+                }
+            }
+        }
+
+        Debug.Log("房间布局已应用");
+    }
+
+    /// <summary>
+    /// 保存布局到JSON
     /// </summary>
     private void SaveLayoutToJson()
     {
         try
         {
-            // 将临时布局合并到正式布局
             foreach (var kvp in tempLayouts)
             {
                 if (!roomLayouts.ContainsKey(kvp.Key))
@@ -578,11 +756,25 @@ public class HomeSystemController : MonoBehaviour
                     roomLayouts[kvp.Key] = new List<FurniturePlacementData>();
                 }
 
-                // 合并临时布局到正式布局
-                roomLayouts[kvp.Key] = new List<FurniturePlacementData>(kvp.Value);
+                foreach (var placement in kvp.Value)
+                {
+                    bool exists = false;
+                    foreach (var existing in roomLayouts[kvp.Key])
+                    {
+                        if (existing.gridX == placement.gridX && existing.gridY == placement.gridY)
+                        {
+                            exists = true;
+                            break;
+                        }
+                    }
+
+                    if (!exists)
+                    {
+                        roomLayouts[kvp.Key].Add(placement);
+                    }
+                }
             }
 
-            // 转换为可序列化格式
             List<RoomData> rooms = new List<RoomData>();
             foreach (var kvp in roomLayouts)
             {
@@ -602,17 +794,15 @@ public class HomeSystemController : MonoBehaviour
 
             string json = JsonUtility.ToJson(wrapper, true);
 
-            // 验证JSON是否有效
             if (!string.IsNullOrEmpty(json))
             {
                 PlayerPrefs.SetString("RoomLayouts", json);
                 PlayerPrefs.Save();
 
-                // 也可以保存到文件
                 string path = Path.Combine(Application.persistentDataPath, $"room_layout_{currentRoomIndex}.json");
                 File.WriteAllText(path, json);
 
-                Debug.Log($"布局已保存到 PlayerPrefs 和文件: {path}\nJSON内容: {json}");
+                Debug.Log($"布局已保存到 PlayerPrefs 和文件: {path}");
             }
             else
             {
@@ -637,6 +827,8 @@ public class HomeSystemController : MonoBehaviour
 
         SaveLayoutToJson();
         ExitEditMode(true);
+
+        tempLayouts.Clear();
     }
 
     /// <summary>
@@ -649,45 +841,11 @@ public class HomeSystemController : MonoBehaviour
         if (AudioManager.Instance != null)
             AudioManager.Instance.PlayButtonClick();
 
-        // 清空临时放置的家具
         ClearTempPlacements();
-
-        // 清空临时布局数据
         tempLayouts.Clear();
-
+        ApplyRoomLayouts();
         ExitEditMode(false);
-
-        // 重新加载正式布局，恢复格子状态
-        ReloadRoomLayouts();
     }
-
-    /// <summary>
-    /// 重新加载房间布局（用于取消后恢复）
-    /// </summary>
-    private void ReloadRoomLayouts()
-    {
-        if (GridSystemManager.Instance == null) return;
-
-        // 清除所有已放置的家具
-        foreach (var kvp in roomLayouts)
-        {
-            int roomIndex = kvp.Key;
-            foreach (var placement in kvp.Value)
-            {
-                FurnitureData furniture = FurnitureDatabase.Instance?.GetFurnitureById(placement.furnitureId);
-                if (furniture != null)
-                {
-                    // 重新放置家具
-                    Vector2Int gridPos = new Vector2Int(placement.gridX, placement.gridY);
-                    GridSystemManager.Instance.PlaceFurniture(roomIndex, furniture, gridPos);
-                    Debug.Log($"恢复家具: {furniture.name} 在房间 {roomIndex} 位置 ({gridPos.x}, {gridPos.y})");
-                }
-            }
-        }
-
-        Debug.Log("房间布局已恢复");
-    }
-
 
     /// <summary>
     /// 进入编辑模式
@@ -698,23 +856,10 @@ public class HomeSystemController : MonoBehaviour
 
         isEditMode = true;
 
-        // 显示所有格子的贴图
         SetAllGridsAlpha(editModeGridAlpha);
-
-        // 更新编辑模式UI
         UpdateEditModeUI();
-
-        // 更新按钮状态
         UpdateButtonStates();
-
-        // 触发事件
         OnEditModeChanged?.Invoke(true);
-
-        // 重置ScrollView位置到顶部
-        if (ownedFurnitureScrollRect != null)
-        {
-            ownedFurnitureScrollRect.verticalNormalizedPosition = 1f;
-        }
 
         Debug.Log($"进入编辑模式");
     }
@@ -728,16 +873,9 @@ public class HomeSystemController : MonoBehaviour
 
         isEditMode = false;
 
-        // 隐藏格子贴图
         SetAllGridsAlpha(normalGridAlpha);
-
-        // 更新编辑模式UI
         UpdateEditModeUI();
-
-        // 更新按钮状态
         UpdateButtonStates();
-
-        // 触发事件
         OnEditModeChanged?.Invoke(false);
 
         Debug.Log($"退出编辑模式，保存更改: {saveChanges}");
@@ -748,20 +886,16 @@ public class HomeSystemController : MonoBehaviour
     /// </summary>
     private void UpdateEditModeUI()
     {
-        // 编辑按钮
         if (editLayoutButton != null)
             editLayoutButton.gameObject.SetActive(!isEditMode);
 
-        // 编辑操作面板（确认/取消按钮）
         if (layoutEditingPanel != null)
             layoutEditingPanel.SetActive(isEditMode);
 
-        // 持有家具栏 - 应该在编辑模式下显示
         if (ownedFurnitureScrollRect != null)
         {
             ownedFurnitureScrollRect.gameObject.SetActive(isEditMode);
 
-            // 确保Content中的物品可见
             if (ownedFurnitureContent != null)
             {
                 foreach (Transform child in ownedFurnitureContent)
@@ -771,12 +905,10 @@ public class HomeSystemController : MonoBehaviour
             }
         }
 
-        // 按钮栏 - 应该在编辑模式下显示
         if (buttonBarContainer != null)
         {
             buttonBarContainer.gameObject.SetActive(isEditMode);
 
-            // 确保按钮栏中的按钮可见
             foreach (Transform child in buttonBarContainer)
             {
                 child.gameObject.SetActive(isEditMode);
@@ -891,14 +1023,9 @@ public class HomeSystemController : MonoBehaviour
 
         Debug.Log($"切换到房间: {roomIndex} ({GetRoomName(roomIndex)})");
 
-        if (roomViews[currentRoomIndex] != null)
-            roomViews[currentRoomIndex].SetActive(false);
-
-        if (roomViews[roomIndex] != null)
-            roomViews[roomIndex].SetActive(true);
-
         currentRoomIndex = roomIndex;
 
+        SetRoomVisibility();
         UpdateButtonStates();
         UpdateRoomNameDisplay();
 
@@ -1014,16 +1141,10 @@ public class HomeSystemController : MonoBehaviour
             {
                 if (view != null)
                 {
-                    view.transform.SetParent(roomContainer, false);
-                }
-            }
-        }
+                    view.transform.SetParent(roomContainer, true);
 
-        for (int i = 0; i < roomViews.Length; i++)
-        {
-            if (roomViews[i] != null)
-            {
-                roomViews[i].SetActive(i == currentRoomIndex);
+                    RectTransform viewRect = view.GetComponent<RectTransform>();
+                }
             }
         }
     }
@@ -1038,6 +1159,7 @@ public class HomeSystemController : MonoBehaviour
             GameObject gridManagerObj = new GameObject("GridSystemManager");
             GridSystemManager gridManager = gridManagerObj.AddComponent<GridSystemManager>();
             gridManager.roomGridContainers = roomGridContainers;
+            gridManager.roomFurnitureContainers = roomFurnitureContainers;
             gridManager.gridCellPrefab = gridCellPrefab;
         }
 
@@ -1061,16 +1183,8 @@ public class HomeSystemController : MonoBehaviour
     {
         if (GridSystemManager.Instance == null) return;
 
-        // 遍历所有临时布局中的家具并移除
-        foreach (var kvp in tempLayouts)
-        {
-            int roomIndex = kvp.Key;
-            foreach (var placement in kvp.Value)
-            {
-                GridSystemManager.Instance.RemoveFurniture(roomIndex, placement.furnitureId);
-                Debug.Log($"取消放置: {placement.furnitureId} 在房间 {roomIndex}");
-            }
-        }
+        GridSystemManager.Instance.RemoveAllFurnitureInRoom(currentRoomIndex);
+        Debug.Log($"清空房间 {currentRoomIndex} 的所有临时家具");
     }
 
     /// <summary>
@@ -1080,13 +1194,11 @@ public class HomeSystemController : MonoBehaviour
     {
         Debug.Log("=== 测试保存布局 ===");
 
-        // 创建一个测试数据
         if (!tempLayouts.ContainsKey(currentRoomIndex))
         {
             tempLayouts[currentRoomIndex] = new List<FurniturePlacementData>();
         }
 
-        // 添加一个测试家具（如果有）
         if (ownedFurnitureIds.Count > 0)
         {
             FurniturePlacementData testData = new FurniturePlacementData
@@ -1111,14 +1223,11 @@ public class HomeSystemController : MonoBehaviour
     {
         Debug.Log("=== 测试加载布局 ===");
         LoadRoomLayouts();
-        ReloadRoomLayouts();
+        ApplyRoomLayouts();
         Debug.Log("=== 测试结束 ===");
     }
 }
 
-/// <summary>
-/// 家具放置数据
-/// </summary>
 [System.Serializable]
 public class FurniturePlacementData
 {
@@ -1128,9 +1237,6 @@ public class FurniturePlacementData
     public int roomType;
 }
 
-/// <summary>
-/// 房间数据
-/// </summary>
 [System.Serializable]
 public class RoomData
 {
@@ -1138,9 +1244,6 @@ public class RoomData
     public FurniturePlacementData[] placements;
 }
 
-/// <summary>
-/// 房间布局数据包装器
-/// </summary>
 [System.Serializable]
 public class RoomLayoutData
 {
