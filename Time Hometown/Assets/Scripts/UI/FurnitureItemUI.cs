@@ -87,6 +87,7 @@ public class FurnitureItemUI : MonoBehaviour
         // 确保图标不变形
         iconImage.preserveAspect = true;
 
+        Debug.Log($"家具 {furnitureData.name} 图标尺寸调整为: {iconRect.sizeDelta} (宽高比: {aspectRatio:F2})");
     }
 
     /// <summary>

@@ -1,13 +1,13 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
-using System.Collections.Generic;
 
-public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler, IPointerDownHandler, IPointerUpHandler
+public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
 {
     [Header("格子组件")]
     [SerializeField] private Image backgroundImage;
     [SerializeField] private Image highlightImage;      // 高亮图片组件
+    [SerializeField] private Image furnitureIcon;       // 放置家具后的图标
     [SerializeField] private Text gridInfoText;         // 调试用，可隐藏
 
     [Header("格子颜色")]
@@ -35,9 +35,6 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
     private bool isValidPlacement = false;
     private bool isEditMode = false;        // 是否处于编辑模式
     private Color originalColor;             // 原始颜色（不包含透明度）
-
-    // 拖拽相关
-    private bool isPointerDown = false;
 
     private void Awake()
     {
@@ -71,6 +68,23 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
 
         highlightImage.gameObject.SetActive(false);
         highlightImage.raycastTarget = false; // 确保高亮不阻挡点击
+
+        // 初始化家具图标
+        if (furnitureIcon == null)
+        {
+            GameObject iconObj = new GameObject("FurnitureIcon");
+            iconObj.transform.SetParent(transform, false);
+            furnitureIcon = iconObj.AddComponent<Image>();
+
+            RectTransform iconRect = furnitureIcon.rectTransform;
+            iconRect.anchorMin = Vector2.zero;
+            iconRect.anchorMax = Vector2.one;
+            iconRect.offsetMin = new Vector2(5, 5);
+            iconRect.offsetMax = new Vector2(-5, -5);
+        }
+
+        furnitureIcon.gameObject.SetActive(false);
+        furnitureIcon.raycastTarget = false; // 确保图标不阻挡点击
     }
 
     /// <summary>
@@ -123,10 +137,7 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         }
     }
 
-    /// <summary>
-    /// 放置家具 - 现在只标记占用，不创建图标
-    /// </summary>
-    public void PlaceFurniture(string furnitureId, bool providesNewGrids = false, GridType newGridType = GridType.Forbidden)
+    public void PlaceFurniture(string furnitureId, Sprite icon, bool providesNewGrids = false, GridType newGridType = GridType.Forbidden)
     {
         // 如果格子已被占用，先记录警告
         if (isOccupied)
@@ -137,6 +148,12 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
 
         isOccupied = true;
         placedFurnitureId = furnitureId;
+
+        if (furnitureIcon != null && icon != null)
+        {
+            furnitureIcon.sprite = icon;
+            furnitureIcon.gameObject.SetActive(true);
+        }
 
         // 根据家具是否提供新格子来更新格子类型
         if (providesNewGrids)
@@ -171,6 +188,11 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
 
         isOccupied = false;
         placedFurnitureId = null;
+
+        if (furnitureIcon != null)
+        {
+            furnitureIcon.gameObject.SetActive(false);
+        }
 
         // 恢复原始格子类型
         gridType = originalGridType;
@@ -241,6 +263,7 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
         backgroundImage.color = color;
     }
 
+
     /// <summary>
     /// 设置高亮状态 - 使用高亮图片组件
     /// </summary>
@@ -262,105 +285,6 @@ public class GridCellUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHand
     {
         isHighlighted = false;
         highlightImage.gameObject.SetActive(false);
-    }
-
-    /// <summary>
-    /// 指针按下事件
-    /// </summary>
-    public void OnPointerDown(PointerEventData eventData)
-    {
-        if (!isSelectable || !isEditMode) return;
-
-        isPointerDown = true;
-
-        // 如果格子有家具，触发家具拾取（准备移动）
-        if (isOccupied)
-        {
-            GridSystemManager.Instance?.OnFurniturePickup(gridPosition, placedFurnitureId);
-            Debug.Log($"拾取家具: {placedFurnitureId} 在位置 {gridPosition}");
-        }
-    }
-
-    /// <summary>
-    /// 指针抬起事件
-    /// </summary>
-    public void OnPointerUp(PointerEventData eventData)
-    {
-        if (!isSelectable || !isEditMode) return;
-
-        // 如果正在移动家具，尝试完成移动
-        if (GridSystemManager.Instance != null && GridSystemManager.Instance.IsMovingFurniture())
-        {
-            HomeSystemController homeSystem = FindObjectOfType<HomeSystemController>();
-
-            // 检查是否在垃圾桶上
-            bool onTrashCan = false;
-            if (homeSystem != null && homeSystem.trashCan != null && homeSystem.enableTrashCan)
-            {
-                // 使用射线检测检查鼠标位置是否有垃圾桶
-                var results = new List<RaycastResult>();
-                EventSystem.current.RaycastAll(eventData, results);
-                foreach (var result in results)
-                {
-                    if (result.gameObject.GetComponent<TrashCanController>() != null)
-                    {
-                        onTrashCan = true;
-                        break;
-                    }
-                }
-            }
-
-            if (onTrashCan)
-            {
-                // 触碰到垃圾桶，执行删除
-                homeSystem.trashCan.DeleteFurniture();
-                Debug.Log("家具被丢入垃圾桶");
-
-                // 通知HomeSystemController复位UI栏
-                homeSystem?.ResetUIBars();
-            }
-            else
-            {
-                // 否则尝试放置到格子
-                Vector2 screenPosition = eventData.position;
-                GridCellUI targetCell = homeSystem?.FindGridCellAtPosition(screenPosition);
-
-                if (targetCell != null)
-                {
-                    // 尝试完成移动
-                    bool success = GridSystemManager.Instance.TryFinishMovingFurniture(
-                        homeSystem?.GetCurrentRoomIndex() ?? 0,
-                        targetCell.GridPosition
-                    );
-
-                    if (success)
-                    {
-                        Debug.Log($"家具移动成功到位置: {targetCell.GridPosition}");
-                        if (AudioManager.Instance != null)
-                            AudioManager.Instance.PlaySuccessSound();
-                    }
-                    else
-                    {
-                        Debug.Log("家具移动失败");
-                        if (AudioManager.Instance != null)
-                            AudioManager.Instance.PlayErrorSound();
-                        // 移动失败时取消移动（回到原位）
-                        GridSystemManager.Instance.CancelMovingFurniture();
-                    }
-                }
-                else
-                {
-                    // 没有找到目标格子，取消移动（回到原位）
-                    GridSystemManager.Instance.CancelMovingFurniture();
-                    Debug.Log("未找到目标格子，取消移动");
-                }
-
-                // 通知HomeSystemController复位UI栏
-                homeSystem?.ResetUIBars();
-            }
-        }
-
-        isPointerDown = false;
     }
 
     /// <summary>

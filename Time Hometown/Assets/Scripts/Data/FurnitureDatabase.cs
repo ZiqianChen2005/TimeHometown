@@ -10,7 +10,7 @@ public class FurnitureDatabase : MonoBehaviour
     [SerializeField] private string jsonFilePath = "Data/furniture_data"; // Resources路径，不需要扩展名
 
     [Header("贴图配置")]
-    [SerializeField] private string iconPath = "Furnitures"; // 贴图Resources路径
+    [SerializeField] private string iconPath = "Image/UI/Furniture"; // 贴图Resources路径
 
     [Header("调试")]
     [SerializeField] private bool loadIconsOnStartup = true; // 启动时加载贴图
@@ -32,7 +32,6 @@ public class FurnitureDatabase : MonoBehaviour
             Instance = this;
             DontDestroyOnLoad(gameObject);
             LoadFurnitureData();
-            LoadAllFurnitureIcons();
         }
         else
         {

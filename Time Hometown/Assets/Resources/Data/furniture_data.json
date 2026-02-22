@@ -40,17 +40,17 @@
             "gridRequirements": [
                 {
                     "requiredType": 0,
-                    "count": 3
+                    "count": 2
                 }
             ],
-            "width": 3,
+            "width": 2,
             "height": 1,
             "isLocked": false,
             "unlockLevel": 1,
             "requiredRoomType": 2,
             "providesNewGrids": true,
             "providedGridType": 1,
-            "providedGridCount": 3
+            "providedGridCount": 0
         },
         {
             "id": "town_oak_cabinet",
@@ -70,7 +70,7 @@
                 }
             ],
             "width": 2,
-            "height": 3,
+            "height": 2,
             "isLocked": false,
             "unlockLevel": 1,
             "requiredRoomType": 2,
@@ -211,7 +211,7 @@
         {
             "id": "town_key_plate",
             "name": "铸铁钥匙盘",
-            "price": 0,
+            "price": 20,
             "icon": {
                 "instanceID": 0
             },
